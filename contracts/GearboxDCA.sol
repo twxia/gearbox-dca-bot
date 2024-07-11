@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
@@ -11,10 +12,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {MultiCall} from "@gearbox-protocol/core-v2/contracts/libraries/MultiCall.sol";
 import {IGearboxDCAStruct} from "contracts/interfaces/IGearboxDCAStruct.sol";
+import {IGearboxDCA} from "contracts/interfaces/IGearboxDCA.sol";
 
-contract GearboxDCA is EIP712, IGearboxDCAStruct {
+import "contracts/interfaces/IGearboxDCAException.sol";
+
+contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     ICreditFacadeV3 private _creditFacade;
     IPriceOracleV3 private _priceOracle;
+
+    string public constant ORDER_TYPE =
+        "Order(address creditAccount,address collateral,address tokenIn,address tokenOut,uint256 salt,uint256 amountIn,uint256 parts,uint256 period,uint256 slippage)";
+    bytes32 public constant ORDER_TYPEHASH =
+        keccak256(abi.encodePacked(ORDER_TYPE));
 
     constructor(
         string memory name,
@@ -25,6 +34,10 @@ contract GearboxDCA is EIP712, IGearboxDCAStruct {
         _creditFacade = ICreditFacadeV3(creditFacadeAddress);
         _priceOracle = IPriceOracleV3(priceOracle);
     }
+
+    //
+    // PUBLIC VIEW
+    //
 
     function getCreditFacade() public view returns (ICreditFacadeV3) {
         return _creditFacade;
@@ -98,5 +111,36 @@ contract GearboxDCA is EIP712, IGearboxDCAStruct {
         calls[4] = MultiCall({target: adapter, callData: adapterCallData});
 
         _creditFacade.botMulticall(order.creditAccount, calls);
+    }
+
+    function executeOrder(
+        Order calldata order,
+        bytes calldata signature,
+        address adapter,
+        bytes calldata adapterCallData
+    ) public view override {
+        revert("Not implemented");
+    }
+
+    function getOrderHash(
+        Order calldata order
+    ) public view override returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(ORDER_TYPEHASH, order)));
+    }
+
+    //
+    // INTERNAL VIEW
+    //
+    function _verifySigner(
+        address borrower,
+        Order calldata order,
+        bytes memory signature
+    ) internal view {
+        bytes32 orderHash = getOrderHash(order);
+        address signer = ECDSA.recover(orderHash, signature);
+
+        if (signer != borrower) {
+            revert InvalidSingerException();
+        }
     }
 }
