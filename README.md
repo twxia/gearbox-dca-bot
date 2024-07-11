@@ -1,17 +1,37 @@
-## Foundry
+## Gearbox DCA Bot Example
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Flow
 
-Foundry consists of:
+![sequence_diagram](./diagram/sequence.png)
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Design Note
 
-## Documentation
+### How should we handle the `openCreditAccount`?
 
-https://book.getfoundry.sh/
+<details open>
+<summary>Capital efficiency version</summary>
+
+- User on-chain actions:
+  1.  Approve `dcaBot` to spend 10 WETH (EIP-2612-compatible token can skip this step)
+  2.  `creditFacade.openCreditAccount(user, [], 0)`
+  3.  `creditFacade.setBotPermissions(dcaBot, PERMISSIONS)`
+- Pros:
+  1.  Capital efficiency: User can move their money easily. Funds will be moved when the order gets executed
+- Cons: 1. Extra security risk: User needs to approve first to let dcaBot to spend their money
+</details>
+
+<details>
+ <summary>(Skip) Capital inefficiency version</summary>
+
+- User on-chain actions:
+  1.  Approve `creditManager` to spend 10 WETH (EIP-2612-compatible token can skip this step)
+  2.  `creditFacade.openCreditAccount(user, [addCollateral(WETH,10 ether)], 0)`
+  3.  `creditFacade.setBotPermissions(dcaBot, EXTERNAL_CALLS_PERMISSION)`
+- Pros:
+  1.  Simple design: dcaBot only needs to care about the creditFacade's external calls
+- Cons:
+  1.  Capital inefficiency: collateral stores in the credit account first
+  </details>
 
 ## Usage
 
