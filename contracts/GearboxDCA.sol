@@ -10,7 +10,6 @@ import {BalanceDelta} from "@gearbox-protocol/core-v3/contracts/libraries/Balanc
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
 import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
@@ -54,19 +53,15 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     //
 
     //
-    // PUBLIC VIEW
+    // EXTERNAL
     //
-
-    function getCreditFacade() public view returns (ICreditFacadeV3) {
-        return _creditFacade;
-    }
 
     function executeOrder(
         Order calldata order,
         bytes calldata signature,
         address adapter,
         bytes calldata adapterCallData
-    ) public override {
+    ) external override {
         _onlyIncompleteAndUnexecutedOrder(order);
 
         address borrower = _creditManager.getBorrowerOrRevert(
@@ -78,21 +73,44 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         _execute(order, adapter, adapterCallData);
     }
 
+    //
+    // EXTERNAL VIEW
+
     function getOrderHash(
         Order calldata order
-    ) public view override returns (bytes32) {
-        return _hashTypedDataV4(keccak256(abi.encode(ORDER_TYPEHASH, order)));
+    ) external view override returns (bytes32) {
+        return _getOrderHash(order);
+    }
+
+    function getOrderStatus(
+        bytes32 orderHash
+    ) external view returns (OrderStatus memory) {
+        return _orderStatuses[orderHash];
+    }
+
+    //
+    // PUBLIC VIEW
+    //
+
+    function getCreditFacade() public view returns (ICreditFacadeV3) {
+        return _creditFacade;
     }
 
     //
     // INTERNAL VIEW
     //
+    function _getOrderHash(
+        Order calldata order
+    ) internal view returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(ORDER_TYPEHASH, order)));
+    }
+
     function _verifySigner(
         address borrower,
         Order calldata order,
         bytes memory signature
     ) internal view {
-        bytes32 orderHash = getOrderHash(order);
+        bytes32 orderHash = _getOrderHash(order);
         address signer = ECDSA.recover(orderHash, signature);
 
         if (signer != borrower) {
@@ -103,7 +121,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     function _onlyIncompleteAndUnexecutedOrder(
         Order calldata order
     ) internal view {
-        bytes32 orderHash = getOrderHash(order);
+        bytes32 orderHash = _getOrderHash(order);
         OrderStatus memory status = _orderStatuses[orderHash];
 
         if (status.cancelledTime > 0) {
@@ -124,7 +142,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
     function _calcTokenOutMinAmount(
         Order calldata order
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         uint8 tokenInDecimals = IERC20Metadata(order.tokenIn).decimals();
         uint8 tokenOutDecimals = IERC20Metadata(order.tokenOut).decimals();
         uint256 tokenInPrice = _priceOracle.getPrice(order.tokenIn);
@@ -150,18 +168,18 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         address borrower = creditManager.getBorrowerOrRevert(
             order.creditAccount
         );
-        uint collateralAmount = order.amountIn / order.parts;
 
         SafeERC20.safeTransferFrom(
-            IERC20(order.collateral),
+            IERC20Metadata(order.collateral),
             borrower,
             address(this),
-            collateralAmount
+            order.collateralAmount
         );
 
-        IERC20(order.collateral).approve(
+        SafeERC20.forceApprove(
+            IERC20Metadata(order.collateral),
             address(creditManager),
-            collateralAmount
+            order.collateralAmount
         );
 
         MultiCall[] memory calls = new MultiCall[](7);
@@ -170,7 +188,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
         deltas[0] = BalanceDelta({
             token: order.tokenIn,
-            amount: collateralAmount.toInt256()
+            amount: order.collateralAmount.toInt256()
         });
 
         uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
@@ -192,7 +210,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
             target: address(_creditFacade),
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.addCollateral,
-                (order.collateral, collateralAmount)
+                (order.collateral, order.collateralAmount)
             )
         });
 
@@ -238,10 +256,11 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
         _creditFacade.botMulticall(order.creditAccount, calls);
 
-        bytes32 orderHash = getOrderHash(order);
+        bytes32 orderHash = _getOrderHash(order);
 
-        OrderStatus memory status = _orderStatuses[orderHash];
+        OrderStatus storage status = _orderStatuses[orderHash];
 
         status.executedTimes += 1;
+        status.executedTime = uint32(block.timestamp);
     }
 }

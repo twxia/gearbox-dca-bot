@@ -18,6 +18,7 @@ interface IGearboxDCAStruct {
         address tokenIn;
         address tokenOut;
         uint256 salt;
+        uint256 collateralAmount;
         uint256 amountIn;
         uint256 parts;
         uint256 period;

@@ -18,4 +18,10 @@ contract TestGearboxDCA is GearboxDCA {
     ) external view {
         _verifySigner(borrower, order, signature);
     }
+
+    function calcTokenOutMinAmount(
+        Order calldata order
+    ) external view returns (uint256) {
+        return _calcTokenOutMinAmount(order);
+    }
 }
