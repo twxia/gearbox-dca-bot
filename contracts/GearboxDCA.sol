@@ -195,7 +195,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
         SafeERC20.forceApprove(IERC20Metadata(order.collateral), creditManager, order.collateralAmount);
 
-        MultiCall[] memory calls = new MultiCall[](7);
+        MultiCall[] memory calls = new MultiCall[](6);
 
         BalanceDelta[] memory deltas = new BalanceDelta[](2);
 
@@ -220,14 +220,9 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
             callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
         });
 
-        calls[3] = MultiCall({
-            target: creditFacade,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.enableToken, (order.tokenOut))
-        });
-
         // TODO: enhance quota to this formula:
         // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
-        calls[4] = MultiCall({
+        calls[3] = MultiCall({
             target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.updateQuota,
@@ -239,9 +234,9 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
                 )
         });
 
-        calls[5] = MultiCall({target: adapter, callData: adapterCallData});
+        calls[4] = MultiCall({target: adapter, callData: adapterCallData});
 
-        calls[6] =
+        calls[5] =
             MultiCall({target: creditFacade, callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())});
 
         ICreditFacadeV3(creditFacade).botMulticall(order.creditAccount, calls);
