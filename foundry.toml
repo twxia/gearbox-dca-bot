@@ -6,4 +6,7 @@ libs = ["lib", "node_modules"]
 [rpc_endpoints]
 mainnet = "${RPC_MAINNET}" 
 
+[fmt]
+sort_imports = true
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

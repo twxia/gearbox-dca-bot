@@ -1,17 +1,13 @@
 {
   "name": "gearbox-dca-bot",
   "version": "1.0.0",
-  "description": "**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib",
-    "test": "test"
-  },
+  "description": "This is a Solidity example of a DCA (Dollar-Cost Averaging) Bot using the Gearbox protocol.",
+  "main": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "forge test"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "wei-chieh@twxia.com",
+  "license": "MIT",
   "dependencies": {
     "@1inch/solidity-utils": "^5.2.0",
     "@gearbox-protocol/core-v2": "^1.19.0-base.10",

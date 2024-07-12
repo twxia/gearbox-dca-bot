@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces/IContractsRegister.sol";
+import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
+import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {BalanceDelta} from "@gearbox-protocol/core-v3/contracts/libraries/BalancesLogic.sol";
-import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
-import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
-import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces/IContractsRegister.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {MultiCall} from "@gearbox-protocol/core-v2/contracts/libraries/MultiCall.sol";
-import {IGearboxDCAStruct} from "contracts/interfaces/IGearboxDCAStruct.sol";
+
 import {IGearboxDCA} from "contracts/interfaces/IGearboxDCA.sol";
+import {IGearboxDCAStruct} from "contracts/interfaces/IGearboxDCAStruct.sol";
 import {LibFormatter} from "contracts/libs/LibFormatter.sol";
 
 import "contracts/interfaces/IGearboxDCAException.sol";
@@ -35,15 +38,11 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
     string public constant ORDER_TYPE =
         "Order(address creditAccount,address collateral,address tokenIn,address tokenOut,uint256 salt,uint256 amountIn,uint256 parts,uint256 period,uint256 slippage)";
-    bytes32 public constant ORDER_TYPEHASH =
-        keccak256(abi.encodePacked(ORDER_TYPE));
+    bytes32 public constant ORDER_TYPEHASH = keccak256(abi.encodePacked(ORDER_TYPE));
 
-    constructor(
-        string memory name,
-        string memory version,
-        address priceOracle,
-        address contractsRegister
-    ) EIP712(name, version) {
+    constructor(string memory name, string memory version, address priceOracle, address contractsRegister)
+        EIP712(name, version)
+    {
         _priceOracle = IPriceOracleV3(priceOracle);
         _contractsRegister = IContractsRegister(contractsRegister);
     }
@@ -51,7 +50,6 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     //
     // MODIFIER
     //
-
     modifier onlyIncompleteAndUnexecutedOrder(Order calldata order) {
         _onlyIncompleteAndUnexecutedOrder(order);
         _;
@@ -74,26 +72,18 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     //
     // EXTERNAL
     //
-
     function executeOrder(
         Order calldata order,
         bytes calldata signature,
         address adapter,
         bytes calldata adapterCallData
-    )
-        external
-        override
-        onlyIncompleteAndUnexecutedOrder(order)
-        onlyValidCreditManager(order.creditManager)
-    {
+    ) external override onlyIncompleteAndUnexecutedOrder(order) onlyValidCreditManager(order.creditManager) {
         _verifySigner(order, signature);
 
         _execute(order, adapter, adapterCallData);
     }
 
-    function cancelOrder(
-        Order calldata order
-    ) external onlyOrderOwner(order.owner) {
+    function cancelOrder(Order calldata order) external onlyOrderOwner(order.owner) {
         bytes32 orderHash = _getOrderHash(order);
         OrderStatus storage status = _orderStatuses[orderHash];
 
@@ -107,31 +97,22 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     //
     // EXTERNAL VIEW
 
-    function getOrderHash(
-        Order calldata order
-    ) external view override returns (bytes32) {
+    function getOrderHash(Order calldata order) external view override returns (bytes32) {
         return _getOrderHash(order);
     }
 
-    function getOrderStatus(
-        bytes32 orderHash
-    ) external view returns (OrderStatus memory) {
+    function getOrderStatus(bytes32 orderHash) external view returns (OrderStatus memory) {
         return _orderStatuses[orderHash];
     }
 
     //
     // INTERNAL VIEW
     //
-    function _getOrderHash(
-        Order calldata order
-    ) internal view returns (bytes32) {
+    function _getOrderHash(Order calldata order) internal view returns (bytes32) {
         return _hashTypedDataV4(keccak256(abi.encode(ORDER_TYPEHASH, order)));
     }
 
-    function _verifySigner(
-        Order calldata order,
-        bytes memory signature
-    ) internal view {
+    function _verifySigner(Order calldata order, bytes memory signature) internal view {
         bytes32 orderHash = _getOrderHash(order);
         address signer = ECDSA.recover(orderHash, signature);
 
@@ -140,9 +121,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         }
     }
 
-    function _onlyIncompleteAndUnexecutedOrder(
-        Order calldata order
-    ) internal view {
+    function _onlyIncompleteAndUnexecutedOrder(Order calldata order) internal view {
         bytes32 orderHash = _getOrderHash(order);
         OrderStatus memory status = _orderStatuses[orderHash];
 
@@ -162,90 +141,55 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         }
     }
 
-    function _calcTokenOutMinAmount(
-        Order calldata order
-    ) internal view returns (uint256) {
+    function _calcTokenOutMinAmount(Order calldata order) internal view returns (uint256) {
         uint8 tokenInDecimals = IERC20Metadata(order.tokenIn).decimals();
         uint8 tokenOutDecimals = IERC20Metadata(order.tokenOut).decimals();
         uint256 tokenInPrice = _priceOracle.getPrice(order.tokenIn);
         uint256 tokenOutPrice = _priceOracle.getPrice(order.tokenOut);
         uint256 price = (tokenInPrice * 1e8) / tokenOutPrice;
-        uint256 tokenInAmountWithSlippage = (order.amountIn *
-            (PERCENTAGE_FACTOR - order.slippage)) / PERCENTAGE_FACTOR;
-        uint256 tokenOutMinAmountWithTokenInDecimals = (tokenInAmountWithSlippage *
-                price) / 1e8;
-        uint256 tokenOutMinAmount = tokenOutMinAmountWithTokenInDecimals
-            .formatDecimals(tokenInDecimals, tokenOutDecimals);
+        uint256 tokenInAmountWithSlippage = (order.amountIn * (PERCENTAGE_FACTOR - order.slippage)) / PERCENTAGE_FACTOR;
+        uint256 tokenOutMinAmountWithTokenInDecimals = (tokenInAmountWithSlippage * price) / 1e8;
+        uint256 tokenOutMinAmount =
+            tokenOutMinAmountWithTokenInDecimals.formatDecimals(tokenInDecimals, tokenOutDecimals);
         return tokenOutMinAmount;
     }
 
-    function _execute(
-        Order calldata order,
-        address adapter,
-        bytes calldata adapterCallData
-    ) internal {
+    function _execute(Order calldata order, address adapter, bytes calldata adapterCallData) internal {
         address creditManager = order.creditManager;
         address creditFacade = ICreditManagerV3(creditManager).creditFacade();
 
-        SafeERC20.safeTransferFrom(
-            IERC20Metadata(order.collateral),
-            order.owner,
-            address(this),
-            order.collateralAmount
-        );
+        SafeERC20.safeTransferFrom(IERC20Metadata(order.collateral), order.owner, address(this), order.collateralAmount);
 
-        SafeERC20.forceApprove(
-            IERC20Metadata(order.collateral),
-            creditManager,
-            order.collateralAmount
-        );
+        SafeERC20.forceApprove(IERC20Metadata(order.collateral), creditManager, order.collateralAmount);
 
         MultiCall[] memory calls = new MultiCall[](7);
 
         BalanceDelta[] memory deltas = new BalanceDelta[](2);
 
-        deltas[0] = BalanceDelta({
-            token: order.tokenIn,
-            amount: order.collateralAmount.toInt256()
-        });
+        deltas[0] = BalanceDelta({token: order.tokenIn, amount: order.collateralAmount.toInt256()});
 
         uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
 
-        deltas[1] = BalanceDelta({
-            token: order.tokenOut,
-            amount: tokenOutMinAmount.toInt256()
-        });
+        deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
 
         calls[0] = MultiCall({
             target: creditFacade,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.storeExpectedBalances,
-                (deltas)
-            )
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (deltas))
         });
 
         calls[1] = MultiCall({
             target: creditFacade,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.addCollateral,
-                (order.collateral, order.collateralAmount)
-            )
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
         });
 
         calls[2] = MultiCall({
             target: creditFacade,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.increaseDebt,
-                (order.amountIn)
-            )
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
         });
 
         calls[3] = MultiCall({
             target: creditFacade,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.enableToken,
-                (order.tokenOut)
-            )
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.enableToken, (order.tokenOut))
         });
 
         // TODO: enhance quota to this formula:
@@ -259,18 +203,13 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
                     int96(uint96(order.amountIn)),
                     uint96(order.amountIn) // TODO: should be total usdt amount in eth
                 )
-            )
+                )
         });
 
         calls[5] = MultiCall({target: adapter, callData: adapterCallData});
 
-        calls[6] = MultiCall({
-            target: creditFacade,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.compareBalances,
-                ()
-            )
-        });
+        calls[6] =
+            MultiCall({target: creditFacade, callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())});
 
         ICreditFacadeV3(creditFacade).botMulticall(order.creditAccount, calls);
 

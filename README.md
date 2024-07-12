@@ -1,6 +1,10 @@
 ## Gearbox DCA Bot Example
 
-## Flow
+This is a Solidity example of a DCA (Dollar-Cost Averaging) Bot using the Gearbox protocol.
+
+It does not include a backend service. However, you can easily build a server with two endpoints: one to store signatures in a database, and another to provide available signatures to keeper bots.
+
+## Flow Chart
 
 ![sequence_diagram](./diagram/sequence.png)
 
@@ -51,36 +55,4 @@ $ forge test
 
 ```shell
 $ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
 ```

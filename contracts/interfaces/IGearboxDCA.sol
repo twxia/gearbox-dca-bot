@@ -11,7 +11,5 @@ interface IGearboxDCA {
         bytes calldata adapterCallData
     ) external;
 
-    function getOrderHash(
-        IGearboxDCAStruct.Order calldata order
-    ) external view returns (bytes32);
+    function getOrderHash(IGearboxDCAStruct.Order calldata order) external view returns (bytes32);
 }
