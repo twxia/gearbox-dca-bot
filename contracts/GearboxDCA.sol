@@ -40,7 +40,12 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         "Order(address creditAccount,address collateral,address tokenIn,address tokenOut,uint256 salt,uint256 amountIn,uint256 parts,uint256 period,uint256 slippage)";
     bytes32 public constant ORDER_TYPEHASH = keccak256(abi.encodePacked(ORDER_TYPE));
 
-    constructor(string memory name, string memory version, address priceOracle, address contractsRegister)
+    constructor(
+        string memory name,
+        string memory version,
+        address priceOracle,
+        address contractsRegister
+    )
         EIP712(name, version)
     {
         _priceOracle = IPriceOracleV3(priceOracle);
@@ -72,18 +77,31 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     //
     // EXTERNAL
     //
+
+    /// @notice Execute the order
+    /// @param order The order to execute
+    /// @param signature The signature of the order
+    /// @param adapter The address of the adapter to use
+    /// @param adapterCallData The call data of the adapter
     function executeOrder(
         Order calldata order,
         bytes calldata signature,
         address adapter,
         bytes calldata adapterCallData
-    ) external override onlyIncompleteAndUnexecutedOrder(order) onlyValidCreditManager(order.creditManager) {
+    )
+        external
+        override
+        onlyIncompleteAndUnexecutedOrder(order)
+        onlyValidCreditManager(order.creditManager)
+    {
         _verifySigner(order, signature);
 
         _execute(order, adapter, adapterCallData);
     }
 
-    function cancelOrder(Order calldata order) external onlyOrderOwner(order.owner) {
+    /// @notice Cancel the order
+    /// @param order The order to cancel
+    function cancelOrder(Order calldata order) external override onlyOrderOwner(order.owner) {
         bytes32 orderHash = _getOrderHash(order);
         OrderStatus storage status = _orderStatuses[orderHash];
 
@@ -97,10 +115,14 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     //
     // EXTERNAL VIEW
 
+    /// @notice Get the order hash
+    /// @param order The order to get the hash
     function getOrderHash(Order calldata order) external view override returns (bytes32) {
         return _getOrderHash(order);
     }
 
+    /// @notice Get the order status
+    /// @param orderHash The order hash to get the status
     function getOrderStatus(bytes32 orderHash) external view returns (OrderStatus memory) {
         return _orderStatuses[orderHash];
     }
@@ -112,6 +134,9 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         return _hashTypedDataV4(keccak256(abi.encode(ORDER_TYPEHASH, order)));
     }
 
+    /// @notice Verify the signer of the order
+    /// @param order The order to verify
+    /// @param signature The signature of the order
     function _verifySigner(Order calldata order, bytes memory signature) internal view {
         bytes32 orderHash = _getOrderHash(order);
         address signer = ECDSA.recover(orderHash, signature);

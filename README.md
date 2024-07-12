@@ -2,7 +2,7 @@
 
 This is a Solidity example of a DCA (Dollar-Cost Averaging) Bot using the Gearbox protocol.
 
-It does not include a backend service. However, you can easily build a server with two endpoints: one to store signatures in a database, and another to provide available signatures to keeper bots.
+It does not include backend and frontend services. However, you can easily build a server with two endpoints: one to store signatures in a database, and another to provide available signatures to keeper bots. For frontend, you need to calculate the health risk related stuff and form the `Order` structure.
 
 ## Flow Chart
 
