@@ -9,7 +9,7 @@ interface IGearboxDCA {
         bytes calldata signature,
         address adapter,
         bytes calldata adapterCallData
-    ) external view;
+    ) external;
 
     function getOrderHash(
         IGearboxDCAStruct.Order calldata order

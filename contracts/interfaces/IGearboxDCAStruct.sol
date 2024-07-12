@@ -10,7 +10,7 @@ interface IGearboxDCAStruct {
     /// @param amountIn The amount of tokenIn to swap
     /// @param parts The number of parts to split the swap
     /// @param period The period in seconds between each swap
-    /// @param slippage The slippage tolerance in percentage
+    /// @param slippage The slippage tolerance in percentage, (1e4 = 100%)
 
     struct Order {
         address creditAccount;
@@ -22,5 +22,11 @@ interface IGearboxDCAStruct {
         uint256 parts;
         uint256 period;
         uint256 slippage;
+    }
+
+    struct OrderStatus {
+        uint32 executedTimes;
+        uint32 executedTime;
+        uint32 cancelledTime;
     }
 }

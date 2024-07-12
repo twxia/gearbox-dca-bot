@@ -11,6 +11,7 @@ import {ICreditManagerV3, CollateralDebtData, CollateralCalcTask} from "@gearbox
 import {IBotListV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IBotListV3.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IWETH} from "@gearbox-protocol/core-v2/contracts/interfaces/external/IWETH.sol";
+import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
 import {TestGearboxDCA} from "../contracts/tests/TestGearboxDCA.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IGearboxDCAStruct} from "../contracts/interfaces/IGearboxDCAStruct.sol";
@@ -93,58 +94,6 @@ contract GearboxDCATest is Test {
             BOT_PERMISSIONS
         );
 
-        // dcaBot.test(
-        //     IGearboxDCAStruct.Order({
-        //         creditAccount: creditAccount,
-        //         collateral: address(weth),
-        //         tokenIn: WETH_ADDRESS,
-        //         tokenOut: USDT_ADDRESS,
-        //         amountIn: 10e18,
-        //         parts: 2,
-        //         period: 100,
-        //         slippage: 0
-        //     }),
-        //     WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-        //     abi.encodeWithSelector(
-        //         ISwapRouter.exactInputSingle.selector,
-        //         ISwapRouter.ExactInputSingleParams({
-        //             tokenIn: WETH_ADDRESS,
-        //             tokenOut: USDT_ADDRESS,
-        //             fee: 3000,
-        //             amountIn: 10e18,
-        //             recipient: address(creditAccount),
-        //             deadline: block.timestamp + 100,
-        //             amountOutMinimum: 0,
-        //             sqrtPriceLimitX96: 0
-        //         })
-        //     )
-        // );
-
-        // ICreditManagerV3 creditManager = ICreditManagerV3(
-        //     creditFacade.creditManager()
-        // );
-        // CollateralDebtData memory data = creditManager.calcDebtAndCollateral(
-        //     creditAccount,
-        //     CollateralCalcTask.DEBT_COLLATERAL
-        // );
-        // console.log("Bob's debt: %s", data.debt);
-        // console.log("Bob's totalDebtUSD: %s", data.totalDebtUSD);
-        // console.log("Bob's totalValueUSD: %s", data.totalValueUSD);
-        // console.log("Bob's twvUSD: %s", data.twvUSD);
-
-        // console.log(
-        //     "IERC20(address(WETH_ADDRESS)).balanceOf(bob)",
-        //     IERC20(WETH_ADDRESS).balanceOf(bob)
-        // );
-        // console.log(
-        //     "IERC20(address(WETH_ADDRESS)).balanceOf(creditAccount)",
-        //     IERC20(WETH_ADDRESS).balanceOf(creditAccount)
-        // );
-        // console.log(
-        //     "IERC20(address(USDT_ADDRESS)).balanceOf(creditAccount)",
-        //     IERC20(USDT_ADDRESS).balanceOf(creditAccount)
-        // );
-
         vm.stopPrank();
     }
 
@@ -202,5 +151,67 @@ contract GearboxDCATest is Test {
 
         vm.expectRevert(InvalidSingerException.selector);
         dcaBot.verifySigner(bob, order, abi.encodePacked(r, s, v));
+    }
+
+    function test_executeOrder() public {
+        IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
+            creditAccount: bobCreditAccount,
+            salt: 1,
+            collateral: address(weth),
+            tokenIn: WETH_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            amountIn: 10e18,
+            parts: 5,
+            period: 100,
+            slippage: 5 // 0.5%
+        });
+
+        bytes32 orderHash = dcaBot.getOrderHash(order);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPrivateKey, orderHash);
+
+        dcaBot.executeOrder(
+            order,
+            abi.encodePacked(r, s, v),
+            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
+            abi.encodeWithSelector(
+                ISwapRouter.exactInputSingle.selector,
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: WETH_ADDRESS,
+                    tokenOut: USDT_ADDRESS,
+                    fee: 500,
+                    amountIn: 10e18,
+                    recipient: bobCreditAccount,
+                    deadline: block.timestamp + 100,
+                    amountOutMinimum: 0,
+                    sqrtPriceLimitX96: 0
+                })
+            )
+        );
+
+        ICreditManagerV3 creditManager = ICreditManagerV3(
+            creditFacade.creditManager()
+        );
+        CollateralDebtData memory data = creditManager.calcDebtAndCollateral(
+            bobCreditAccount,
+            CollateralCalcTask.DEBT_COLLATERAL
+        );
+        console.log("Bob's debt: %s", data.debt);
+        console.log("Bob's totalDebtUSD: %s", data.totalDebtUSD);
+        console.log("Bob's totalValueUSD: %s", data.totalValueUSD);
+        console.log("Bob's twvUSD: %s", data.twvUSD);
+
+        console.log(
+            "IERC20(address(WETH_ADDRESS)).balanceOf(bob)",
+            IERC20(WETH_ADDRESS).balanceOf(bob)
+        );
+        console.log(
+            "IERC20(address(WETH_ADDRESS)).balanceOf(bobCreditAccount)",
+            IERC20(WETH_ADDRESS).balanceOf(bobCreditAccount)
+        );
+        console.log(
+            "IERC20(address(USDT_ADDRESS)).balanceOf(bobCreditAccount)",
+            IERC20(USDT_ADDRESS).balanceOf(bobCreditAccount)
+        );
     }
 }
