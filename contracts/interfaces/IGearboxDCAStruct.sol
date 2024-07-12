@@ -2,17 +2,20 @@
 pragma solidity ^0.8.17;
 
 interface IGearboxDCAStruct {
+    /// @param owner The address of the order owner
     /// @param creditAccount The address of the credit account
     /// @param collateral The address of the collateral token
     /// @param tokenIn The address of the token to swap from
     /// @param tokenOut The address of the token to swap to
     /// @param salt The salt of the order for preventing same hash from same order parameters
+    /// @param collateralAmount The amount of collateral to deposit
     /// @param amountIn The amount of tokenIn to swap
     /// @param parts The number of parts to split the swap
     /// @param period The period in seconds between each swap
     /// @param slippage The slippage tolerance in percentage, (1e4 = 100%)
 
     struct Order {
+        address owner;
         address creditAccount;
         address collateral;
         address tokenIn;

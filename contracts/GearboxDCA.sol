@@ -52,6 +52,18 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     // MODIFIER
     //
 
+    modifier onlyIncompleteAndUnexecutedOrder(Order calldata order) {
+        _onlyIncompleteAndUnexecutedOrder(order);
+        _;
+    }
+
+    modifier onlyOrderOwner(Order calldata order) {
+        if (order.owner != msg.sender) {
+            revert InvalidOrderOwnerException();
+        }
+        _;
+    }
+
     //
     // EXTERNAL
     //
@@ -61,9 +73,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         bytes calldata signature,
         address adapter,
         bytes calldata adapterCallData
-    ) external override {
-        _onlyIncompleteAndUnexecutedOrder(order);
-
+    ) external override onlyIncompleteAndUnexecutedOrder(order) {
         address borrower = _creditManager.getBorrowerOrRevert(
             order.creditAccount
         );
@@ -71,6 +81,17 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         _verifySigner(borrower, order, signature);
 
         _execute(order, adapter, adapterCallData);
+    }
+
+    function cancelOrder(Order calldata order) external onlyOrderOwner(order) {
+        bytes32 orderHash = _getOrderHash(order);
+        OrderStatus storage status = _orderStatuses[orderHash];
+
+        if (status.cancelledTime > 0) {
+            revert OrderAlreadyCancelledException();
+        }
+
+        status.cancelledTime = uint32(block.timestamp);
     }
 
     //

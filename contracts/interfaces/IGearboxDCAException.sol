@@ -12,3 +12,6 @@ error OrderAlreadyCompletedException();
 
 /// @notice Thrown on order already executed
 error OrderAlreadyExecutedException();
+
+/// @notice Thrown on invalid order owner
+error InvalidOrderOwnerException();
