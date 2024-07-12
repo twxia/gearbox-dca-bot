@@ -60,12 +60,7 @@ contract GearboxDCATest is Test {
         vm.createSelectFork(vm.rpcUrl("mainnet"), FORK_BLOCK);
         creditFacade = ICreditFacadeV3(WETH_TIER_1_CREDIT_FACADE);
         priceOracle = IPriceOracleV3(PRICE_ORACLE);
-        dcaBot = new TestGearboxDCA(
-            "GearboxDCA",
-            "1.0.0",
-            address(creditFacade),
-            PRICE_ORACLE
-        );
+        dcaBot = new TestGearboxDCA("GearboxDCA", "1.0.0", PRICE_ORACLE);
 
         (bob, bobPrivateKey) = makeAddrAndKey("Bob");
 
@@ -113,6 +108,7 @@ contract GearboxDCATest is Test {
     function test_getOrderHash() public {
         IGearboxDCAStruct.Order memory order1 = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -127,6 +123,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order2 = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 2, // diff
             collateral: address(weth),
@@ -148,6 +145,7 @@ contract GearboxDCATest is Test {
     function test_verifySigner() public {
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -164,12 +162,12 @@ contract GearboxDCATest is Test {
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPrivateKey, orderHash);
 
-        dcaBot.verifySigner(bob, order, abi.encodePacked(r, s, v));
+        dcaBot.verifySigner(order, abi.encodePacked(r, s, v));
 
         (v, r, s) = vm.sign(1, orderHash); // vm.addr(1) != bob
 
         vm.expectRevert(InvalidSingerException.selector);
-        dcaBot.verifySigner(bob, order, abi.encodePacked(r, s, v));
+        dcaBot.verifySigner(order, abi.encodePacked(r, s, v));
     }
 
     function test_executeOrder() public {
@@ -181,6 +179,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -289,6 +288,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -347,6 +347,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -421,6 +422,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -467,6 +469,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -530,6 +533,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -574,6 +578,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
+            creditFacade: address(creditFacade),
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),

@@ -26,8 +26,6 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
     uint256 constant MAX_PARTITION = 1_000_000;
 
-    ICreditFacadeV3 private _creditFacade;
-    ICreditManagerV3 private _creditManager;
     IPriceOracleV3 private _priceOracle;
 
     mapping(bytes32 => OrderStatus) internal _orderStatuses;
@@ -40,11 +38,8 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     constructor(
         string memory name,
         string memory version,
-        address creditFacadeAddress,
         address priceOracle
     ) EIP712(name, version) {
-        _creditFacade = ICreditFacadeV3(creditFacadeAddress);
-        _creditManager = ICreditManagerV3(_creditFacade.creditManager());
         _priceOracle = IPriceOracleV3(priceOracle);
     }
 
@@ -74,11 +69,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         address adapter,
         bytes calldata adapterCallData
     ) external override onlyIncompleteAndUnexecutedOrder(order) {
-        address borrower = _creditManager.getBorrowerOrRevert(
-            order.creditAccount
-        );
-
-        _verifySigner(borrower, order, signature);
+        _verifySigner(order, signature);
 
         _execute(order, adapter, adapterCallData);
     }
@@ -110,14 +101,6 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     }
 
     //
-    // PUBLIC VIEW
-    //
-
-    function getCreditFacade() public view returns (ICreditFacadeV3) {
-        return _creditFacade;
-    }
-
-    //
     // INTERNAL VIEW
     //
     function _getOrderHash(
@@ -127,14 +110,13 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     }
 
     function _verifySigner(
-        address borrower,
         Order calldata order,
         bytes memory signature
     ) internal view {
         bytes32 orderHash = _getOrderHash(order);
         address signer = ECDSA.recover(orderHash, signature);
 
-        if (signer != borrower) {
+        if (signer != order.owner) {
             revert InvalidSingerException();
         }
     }
@@ -183,23 +165,20 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         address adapter,
         bytes calldata adapterCallData
     ) internal {
-        ICreditManagerV3 creditManager = ICreditManagerV3(
-            _creditFacade.creditManager()
-        );
-        address borrower = creditManager.getBorrowerOrRevert(
-            order.creditAccount
-        );
+        address creditFacadeAddress = order.creditFacade;
+        ICreditFacadeV3 creditFacade = ICreditFacadeV3(creditFacadeAddress);
+        address creditManager = creditFacade.creditManager();
 
         SafeERC20.safeTransferFrom(
             IERC20Metadata(order.collateral),
-            borrower,
+            order.owner,
             address(this),
             order.collateralAmount
         );
 
         SafeERC20.forceApprove(
             IERC20Metadata(order.collateral),
-            address(creditManager),
+            creditManager,
             order.collateralAmount
         );
 
@@ -220,7 +199,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[0] = MultiCall({
-            target: address(_creditFacade),
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.storeExpectedBalances,
                 (deltas)
@@ -228,7 +207,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[1] = MultiCall({
-            target: address(_creditFacade),
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.addCollateral,
                 (order.collateral, order.collateralAmount)
@@ -236,7 +215,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[2] = MultiCall({
-            target: address(_creditFacade),
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.increaseDebt,
                 (order.amountIn)
@@ -244,7 +223,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[3] = MultiCall({
-            target: address(_creditFacade),
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.enableToken,
                 (order.tokenOut)
@@ -254,7 +233,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         // TODO: enhance quota to this formula:
         // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
         calls[4] = MultiCall({
-            target: address(_creditFacade),
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.updateQuota,
                 (
@@ -268,14 +247,14 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         calls[5] = MultiCall({target: adapter, callData: adapterCallData});
 
         calls[6] = MultiCall({
-            target: address(_creditFacade),
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.compareBalances,
                 ()
             )
         });
 
-        _creditFacade.botMulticall(order.creditAccount, calls);
+        creditFacade.botMulticall(order.creditAccount, calls);
 
         bytes32 orderHash = _getOrderHash(order);
 

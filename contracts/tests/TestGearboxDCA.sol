@@ -7,16 +7,14 @@ contract TestGearboxDCA is GearboxDCA {
     constructor(
         string memory name,
         string memory version,
-        address creditFacadeAddress,
         address priceOracle
-    ) GearboxDCA(name, version, creditFacadeAddress, priceOracle) {}
+    ) GearboxDCA(name, version, priceOracle) {}
 
     function verifySigner(
-        address borrower,
         Order calldata order,
         bytes calldata signature
     ) external view {
-        _verifySigner(borrower, order, signature);
+        _verifySigner(order, signature);
     }
 
     function calcTokenOutMinAmount(
