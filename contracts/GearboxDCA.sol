@@ -28,17 +28,17 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     using LibFormatter for uint256;
     using SafeCast for uint256;
 
-    uint256 constant MAX_PARTITION = 1_000_000;
+    uint256 public constant MAX_PARTITION = 1_000_000;
+
+    string public constant ORDER_TYPE =
+        "Order(address creditAccount,address collateral,address tokenIn,address tokenOut,uint256 salt,uint256 amountIn,uint256 parts,uint256 period,uint256 slippage)";
+    bytes32 public constant ORDER_TYPEHASH = keccak256(abi.encodePacked(ORDER_TYPE));
 
     IPriceOracleV3 private _priceOracle;
 
     IContractsRegister private _contractsRegister;
 
     mapping(bytes32 => OrderStatus) internal _orderStatuses;
-
-    string public constant ORDER_TYPE =
-        "Order(address creditAccount,address collateral,address tokenIn,address tokenOut,uint256 salt,uint256 amountIn,uint256 parts,uint256 period,uint256 slippage)";
-    bytes32 public constant ORDER_TYPEHASH = keccak256(abi.encodePacked(ORDER_TYPE));
 
     constructor(
         string memory name,
@@ -74,6 +74,13 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         _;
     }
 
+    modifier onlyValidPartition(uint256 parts) {
+        if (parts > MAX_PARTITION) {
+            revert InvalidPartitionException();
+        }
+        _;
+    }
+
     //
     // EXTERNAL
     //
@@ -93,6 +100,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         override
         onlyIncompleteAndUnexecutedOrder(order)
         onlyValidCreditManager(order.creditManager)
+        onlyValidPartition(order.parts)
     {
         _verifySigner(order, signature);
 

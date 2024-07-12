@@ -243,6 +243,57 @@ contract GearboxDCATest is Test {
         assertEq(status.cancelledTime, 0);
     }
 
+    function test_executeOrder_revert_InvalidPartitionException() public {
+        uint256 parts = dcaBot.MAX_PARTITION() + 1;
+        uint256 amountIn = 10 ether;
+        uint256 slippage = 5; // 0.5%
+        uint256 period = 100;
+
+        IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
+            owner: bob,
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
+            creditAccount: bobCreditAccount,
+            salt: 1,
+            collateral: address(weth),
+            collateralAmount: 3 ether,
+            tokenIn: WETH_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            amountIn: amountIn,
+            parts: parts,
+            period: period,
+            slippage: slippage
+        });
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: WETH_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            fee: 500,
+            amountIn: amountIn,
+            recipient: bobCreditAccount,
+            deadline: block.timestamp + 100,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+
+        bytes memory sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
+
+        vm.expectRevert(InvalidPartitionException.selector);
+        dcaBot.executeOrder(
+            order,
+            sig,
+            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
+            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
+        );
+
+        order.parts = dcaBot.MAX_PARTITION();
+        sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
+        dcaBot.executeOrder(
+            order,
+            sig,
+            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
+            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
+        );
+    }
+
     function test_executeOrder_revert_InvalidCreditManagerException() public {
         uint256 parts = 2;
         uint256 amountIn = 10 ether;

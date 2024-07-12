@@ -18,3 +18,6 @@ error OrderAlreadyExecutedException();
 
 /// @notice Thrown on invalid order owner
 error InvalidOrderOwnerException();
+
+/// @notice Thrown on invalid order parts
+error InvalidPartitionException();
