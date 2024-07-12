@@ -33,10 +33,12 @@ contract GearboxDCATest is Test {
     using LibFormatter for uint256;
 
     uint256 internal constant FORK_BLOCK = 20_262_950;
+    address internal constant CONTRACTS_REGISTER =
+        0xA50d4E7D8946a7c90652339CDBd262c375d54D99;
     address internal constant PRICE_ORACLE =
         0x599f585D1042A14aAb194AC8031b2048dEFdFB85;
-    address internal constant WETH_TIER_1_CREDIT_FACADE =
-        0x65352F69E4aA18dEBCf0763455e5277dAD9374C5;
+    address internal constant WETH_TIER_1_CREDIT_MANAGER =
+        0xa30099925B14b00b76Ae2EfE2639CD01598fE68a;
     address internal constant WETH_ADDRESS =
         0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant USDT_ADDRESS =
@@ -48,6 +50,7 @@ contract GearboxDCATest is Test {
 
     IWETH public weth;
     IERC20Metadata public usdt;
+    ICreditManagerV3 public creditManager;
     ICreditFacadeV3 public creditFacade;
     TestGearboxDCA public dcaBot;
     IPriceOracleV3 public priceOracle;
@@ -58,9 +61,15 @@ contract GearboxDCATest is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.rpcUrl("mainnet"), FORK_BLOCK);
-        creditFacade = ICreditFacadeV3(WETH_TIER_1_CREDIT_FACADE);
+        creditManager = ICreditManagerV3(WETH_TIER_1_CREDIT_MANAGER);
+        creditFacade = ICreditFacadeV3(creditManager.creditFacade());
         priceOracle = IPriceOracleV3(PRICE_ORACLE);
-        dcaBot = new TestGearboxDCA("GearboxDCA", "1.0.0", PRICE_ORACLE);
+        dcaBot = new TestGearboxDCA(
+            "GearboxDCA",
+            "1.0.0",
+            PRICE_ORACLE,
+            CONTRACTS_REGISTER
+        );
 
         (bob, bobPrivateKey) = makeAddrAndKey("Bob");
 
@@ -108,7 +117,7 @@ contract GearboxDCATest is Test {
     function test_getOrderHash() public {
         IGearboxDCAStruct.Order memory order1 = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -123,7 +132,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order2 = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 2, // diff
             collateral: address(weth),
@@ -145,7 +154,7 @@ contract GearboxDCATest is Test {
     function test_verifySigner() public {
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -179,7 +188,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -214,10 +223,6 @@ contract GearboxDCATest is Test {
                 ISwapRouter.exactInputSingle.selector,
                 swapParams
             )
-        );
-
-        ICreditManagerV3 creditManager = ICreditManagerV3(
-            creditFacade.creditManager()
         );
 
         uint256 rate = _calcRate(WETH_ADDRESS, USDT_ADDRESS);
@@ -280,6 +285,101 @@ contract GearboxDCATest is Test {
         assertEq(status.cancelledTime, 0);
     }
 
+    function test_executeOrder_revert_InvalidCreditManagerException() public {
+        uint256 parts = 2;
+        uint256 amountIn = 10 ether;
+        uint256 slippage = 5; // 0.5%
+        uint256 period = 100;
+
+        IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
+            owner: bob,
+            creditManager: makeAddr("fake credit manager"),
+            creditAccount: bobCreditAccount,
+            salt: 1,
+            collateral: address(weth),
+            collateralAmount: 3 ether,
+            tokenIn: WETH_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            amountIn: amountIn,
+            parts: parts,
+            period: period,
+            slippage: slippage
+        });
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter
+            .ExactInputSingleParams({
+                tokenIn: WETH_ADDRESS,
+                tokenOut: USDT_ADDRESS,
+                fee: 500,
+                amountIn: amountIn,
+                recipient: bobCreditAccount,
+                deadline: block.timestamp + 100,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+        bytes memory sig = _genSignature(
+            bobPrivateKey,
+            dcaBot.getOrderHash(order)
+        );
+
+        vm.expectRevert(InvalidCreditManagerException.selector);
+        dcaBot.executeOrder(
+            order,
+            sig,
+            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
+            abi.encodeWithSelector(
+                ISwapRouter.exactInputSingle.selector,
+                swapParams
+            )
+        );
+    }
+
+    function test_executeOrder_revert_InvalidSignerException() public {
+        uint256 parts = 2;
+        uint256 amountIn = 10 ether;
+        uint256 slippage = 5; // 0.5%
+        uint256 period = 100;
+
+        IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
+            owner: bob,
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
+            creditAccount: bobCreditAccount,
+            salt: 1,
+            collateral: address(weth),
+            collateralAmount: 3 ether,
+            tokenIn: WETH_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            amountIn: amountIn,
+            parts: parts,
+            period: period,
+            slippage: slippage
+        });
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter
+            .ExactInputSingleParams({
+                tokenIn: WETH_ADDRESS,
+                tokenOut: USDT_ADDRESS,
+                fee: 500,
+                amountIn: amountIn,
+                recipient: bobCreditAccount,
+                deadline: block.timestamp + 100,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+        bytes memory sig = _genSignature(1, dcaBot.getOrderHash(order));
+
+        vm.expectRevert(InvalidSingerException.selector);
+        dcaBot.executeOrder(
+            order,
+            sig,
+            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
+            abi.encodeWithSelector(
+                ISwapRouter.exactInputSingle.selector,
+                swapParams
+            )
+        );
+    }
+
     function test_executeOrder_revert_OrderAlreadyExecutedException() public {
         uint256 parts = 2;
         uint256 amountIn = 10 ether;
@@ -288,7 +388,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -347,7 +447,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -422,7 +522,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -469,7 +569,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -525,7 +625,7 @@ contract GearboxDCATest is Test {
         assertEq(status.cancelledTime, 0);
     }
 
-    function test_cancelOrder_revert_OrderAlreadyCancelledException() public {
+    function test_cancelOrder() public {
         uint256 parts = 2;
         uint256 amountIn = 10 ether;
         uint256 slippage = 5; // 0.5%
@@ -533,7 +633,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -545,22 +645,40 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter
-            .ExactInputSingleParams({
-                tokenIn: WETH_ADDRESS,
-                tokenOut: USDT_ADDRESS,
-                fee: 500,
-                amountIn: amountIn,
-                recipient: bobCreditAccount,
-                deadline: block.timestamp + 100,
-                amountOutMinimum: 0,
-                sqrtPriceLimitX96: 0
-            });
 
-        bytes memory sig = _genSignature(
-            bobPrivateKey,
+        vm.warp(168);
+        vm.startPrank(bob);
+        dcaBot.cancelOrder(order);
+
+        IGearboxDCAStruct.OrderStatus memory status = dcaBot.getOrderStatus(
             dcaBot.getOrderHash(order)
         );
+
+        assertEq(status.executedTimes, 0);
+        assertEq(status.executedTime, 0);
+        assertEq(status.cancelledTime, 168);
+    }
+
+    function test_cancelOrder_revert_OrderAlreadyCancelledException() public {
+        uint256 parts = 2;
+        uint256 amountIn = 10 ether;
+        uint256 slippage = 5; // 0.5%
+        uint256 period = 100;
+
+        IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
+            owner: bob,
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
+            creditAccount: bobCreditAccount,
+            salt: 1,
+            collateral: address(weth),
+            collateralAmount: 3 ether,
+            tokenIn: WETH_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            amountIn: amountIn,
+            parts: parts,
+            period: period,
+            slippage: slippage
+        });
 
         vm.startPrank(bob);
         dcaBot.cancelOrder(order);
@@ -578,7 +696,7 @@ contract GearboxDCATest is Test {
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
-            creditFacade: address(creditFacade),
+            creditManager: WETH_TIER_1_CREDIT_MANAGER,
             creditAccount: bobCreditAccount,
             salt: 1,
             collateral: address(weth),
@@ -590,22 +708,6 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter
-            .ExactInputSingleParams({
-                tokenIn: WETH_ADDRESS,
-                tokenOut: USDT_ADDRESS,
-                fee: 500,
-                amountIn: amountIn,
-                recipient: bobCreditAccount,
-                deadline: block.timestamp + 100,
-                amountOutMinimum: 0,
-                sqrtPriceLimitX96: 0
-            });
-
-        bytes memory sig = _genSignature(
-            bobPrivateKey,
-            dcaBot.getOrderHash(order)
-        );
 
         vm.expectRevert(InvalidOrderOwnerException.selector);
         dcaBot.cancelOrder(order);

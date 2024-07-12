@@ -7,8 +7,9 @@ import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IC
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {BalanceDelta} from "@gearbox-protocol/core-v3/contracts/libraries/BalancesLogic.sol";
-import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
 import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
+import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
+import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces/IContractsRegister.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -28,6 +29,8 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
     IPriceOracleV3 private _priceOracle;
 
+    IContractsRegister private _contractsRegister;
+
     mapping(bytes32 => OrderStatus) internal _orderStatuses;
 
     string public constant ORDER_TYPE =
@@ -38,9 +41,11 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     constructor(
         string memory name,
         string memory version,
-        address priceOracle
+        address priceOracle,
+        address contractsRegister
     ) EIP712(name, version) {
         _priceOracle = IPriceOracleV3(priceOracle);
+        _contractsRegister = IContractsRegister(contractsRegister);
     }
 
     //
@@ -52,9 +57,16 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         _;
     }
 
-    modifier onlyOrderOwner(Order calldata order) {
-        if (order.owner != msg.sender) {
+    modifier onlyOrderOwner(address owner) {
+        if (owner != msg.sender) {
             revert InvalidOrderOwnerException();
+        }
+        _;
+    }
+
+    modifier onlyValidCreditManager(address creditManager) {
+        if (!_contractsRegister.isCreditManager(creditManager)) {
+            revert InvalidCreditManagerException();
         }
         _;
     }
@@ -68,13 +80,20 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         bytes calldata signature,
         address adapter,
         bytes calldata adapterCallData
-    ) external override onlyIncompleteAndUnexecutedOrder(order) {
+    )
+        external
+        override
+        onlyIncompleteAndUnexecutedOrder(order)
+        onlyValidCreditManager(order.creditManager)
+    {
         _verifySigner(order, signature);
 
         _execute(order, adapter, adapterCallData);
     }
 
-    function cancelOrder(Order calldata order) external onlyOrderOwner(order) {
+    function cancelOrder(
+        Order calldata order
+    ) external onlyOrderOwner(order.owner) {
         bytes32 orderHash = _getOrderHash(order);
         OrderStatus storage status = _orderStatuses[orderHash];
 
@@ -165,9 +184,8 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         address adapter,
         bytes calldata adapterCallData
     ) internal {
-        address creditFacadeAddress = order.creditFacade;
-        ICreditFacadeV3 creditFacade = ICreditFacadeV3(creditFacadeAddress);
-        address creditManager = creditFacade.creditManager();
+        address creditManager = order.creditManager;
+        address creditFacade = ICreditManagerV3(creditManager).creditFacade();
 
         SafeERC20.safeTransferFrom(
             IERC20Metadata(order.collateral),
@@ -199,7 +217,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[0] = MultiCall({
-            target: creditFacadeAddress,
+            target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.storeExpectedBalances,
                 (deltas)
@@ -207,7 +225,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[1] = MultiCall({
-            target: creditFacadeAddress,
+            target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.addCollateral,
                 (order.collateral, order.collateralAmount)
@@ -215,7 +233,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[2] = MultiCall({
-            target: creditFacadeAddress,
+            target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.increaseDebt,
                 (order.amountIn)
@@ -223,7 +241,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         });
 
         calls[3] = MultiCall({
-            target: creditFacadeAddress,
+            target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.enableToken,
                 (order.tokenOut)
@@ -233,7 +251,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         // TODO: enhance quota to this formula:
         // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
         calls[4] = MultiCall({
-            target: creditFacadeAddress,
+            target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.updateQuota,
                 (
@@ -247,14 +265,14 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         calls[5] = MultiCall({target: adapter, callData: adapterCallData});
 
         calls[6] = MultiCall({
-            target: creditFacadeAddress,
+            target: creditFacade,
             callData: abi.encodeCall(
                 ICreditFacadeV3Multicall.compareBalances,
                 ()
             )
         });
 
-        creditFacade.botMulticall(order.creditAccount, calls);
+        ICreditFacadeV3(creditFacade).botMulticall(order.creditAccount, calls);
 
         bytes32 orderHash = _getOrderHash(order);
 

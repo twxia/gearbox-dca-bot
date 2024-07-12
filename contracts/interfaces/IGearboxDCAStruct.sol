@@ -3,7 +3,7 @@ pragma solidity ^0.8.17;
 
 interface IGearboxDCAStruct {
     /// @param owner The address of the order owner
-    /// @param creditFacade The address of the credit facade
+    /// @param creditManager The address of the credit manager
     /// @param creditAccount The address of the credit account
     /// @param collateral The address of the collateral token
     /// @param tokenIn The address of the token to swap from
@@ -17,7 +17,7 @@ interface IGearboxDCAStruct {
 
     struct Order {
         address owner;
-        address creditFacade;
+        address creditManager;
         address creditAccount;
         address collateral;
         address tokenIn;

@@ -7,8 +7,9 @@ contract TestGearboxDCA is GearboxDCA {
     constructor(
         string memory name,
         string memory version,
-        address priceOracle
-    ) GearboxDCA(name, version, priceOracle) {}
+        address priceOracle,
+        address contractsRegister
+    ) GearboxDCA(name, version, priceOracle, contractsRegister) {}
 
     function verifySigner(
         Order calldata order,
