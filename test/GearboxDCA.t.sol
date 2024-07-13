@@ -35,8 +35,8 @@ import {
 } from "@gearbox-protocol/integrations-v3/contracts/test/multicall/uniswap/UniswapV3_Calls.sol";
 import {LibFormatter} from "contracts/libs/LibFormatter.sol";
 
-uint192 constant BOT_PERMISSIONS = EXTERNAL_CALLS_PERMISSION | ADD_COLLATERAL_PERMISSION | ENABLE_TOKEN_PERMISSION
-    | UPDATE_QUOTA_PERMISSION | INCREASE_DEBT_PERMISSION;
+uint192 constant BOT_PERMISSIONS =
+    EXTERNAL_CALLS_PERMISSION | ADD_COLLATERAL_PERMISSION | UPDATE_QUOTA_PERMISSION | INCREASE_DEBT_PERMISSION;
 
 contract GearboxDCATest is Test {
     using LibFormatter for uint256;
