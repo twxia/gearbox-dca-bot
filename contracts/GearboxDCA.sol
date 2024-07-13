@@ -239,7 +239,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         return deltas;
     }
 
-    function _genCallsForNonTokenInOrOutCollateral(
+    function _genCalls(
         Order calldata order,
         address adapter,
         bytes calldata adapterCallData
@@ -251,97 +251,69 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
         address creditFacadeAddress = creditManager.creditFacade();
 
-        MultiCall[] memory calls = new MultiCall[](7);
+        MultiCall[] memory calls;
 
-        calls[0] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (_genBalanceDelta(order)))
-        });
+        bool isNonTokenInOrOutCollateral = order.collateral != order.tokenIn && order.collateral != order.tokenOut;
 
-        calls[1] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
-        });
-
-        calls[2] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
-        });
-
-        uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
-        int96 quotaForCollateral = _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
-        int96 quotaForTokenOut = _calcQuotaForQuotedToken(order.tokenOut, order.tokenIn, tokenOutMinAmount);
-
-        // TODO: enhance quota to this formula:
-        // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
-        calls[3] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quotaForTokenOut, uint96(quotaForTokenOut))
-                )
-        });
-
-        calls[4] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.updateQuota, (order.collateral, quotaForCollateral, uint96(quotaForCollateral))
-                )
-        });
-
-        calls[5] = MultiCall({target: adapter, callData: adapterCallData});
-
-        calls[6] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())
-        });
-
-        return calls;
-    }
-
-    function _genCallsForTokenOutCollateralOrUnderlyingCollateral(
-        Order calldata order,
-        address adapter,
-        bytes calldata adapterCallData
-    )
-        internal
-        view
-        returns (MultiCall[] memory)
-    {
-        ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
-        address creditFacadeAddress = creditManager.creditFacade();
-
-        MultiCall[] memory calls = new MultiCall[](6);
-
-        calls[0] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (_genBalanceDelta(order)))
-        });
-
-        calls[1] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
-        });
-
-        calls[2] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
-        });
-
-        int96 quota = int96(uint96(order.amountIn));
-        if (order.collateral != order.tokenIn && order.collateral == order.tokenOut) {
-            quota += _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
+        if (isNonTokenInOrOutCollateral) {
+            calls = new MultiCall[](7);
+        } else {
+            calls = new MultiCall[](6);
         }
 
-        // TODO: enhance quota to this formula:
-        // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
-        calls[3] = MultiCall({
+        calls[0] = MultiCall({
             target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quota, uint96(quota)))
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (_genBalanceDelta(order)))
         });
 
-        calls[4] = MultiCall({target: adapter, callData: adapterCallData});
+        calls[1] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
+        });
 
-        calls[5] = MultiCall({
+        calls[2] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
+        });
+
+        calls[3] = MultiCall({target: adapter, callData: adapterCallData});
+
+        if (isNonTokenInOrOutCollateral) {
+            uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
+            int96 quotaForCollateral = _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
+            int96 quotaForTokenOut = _calcQuotaForQuotedToken(order.tokenOut, order.tokenIn, tokenOutMinAmount);
+
+            /// @dev can be enhanced to this formula (muliplied by LT):
+            /// https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
+            calls[4] = MultiCall({
+                target: creditFacadeAddress,
+                callData: abi.encodeCall(
+                    ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quotaForTokenOut, uint96(quotaForTokenOut))
+                    )
+            });
+
+            calls[5] = MultiCall({
+                target: creditFacadeAddress,
+                callData: abi.encodeCall(
+                    ICreditFacadeV3Multicall.updateQuota, (order.collateral, quotaForCollateral, uint96(quotaForCollateral))
+                    )
+            });
+        } else {
+            int96 quota = int96(uint96(order.amountIn));
+            if (order.collateral != order.tokenIn && order.collateral == order.tokenOut) {
+                quota += _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
+            }
+
+            /// @dev can be enhanced to this formula (muliplied by LT):
+            /// https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
+            calls[4] = MultiCall({
+                target: creditFacadeAddress,
+                callData: abi.encodeCall(ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quota, uint96(quota)))
+            });
+        }
+
+        /// @dev isNonTokenInOrOutCollateral has an additional call data
+        calls[isNonTokenInOrOutCollateral ? 6 : 5] = MultiCall({
             target: creditFacadeAddress,
             callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())
         });
@@ -357,12 +329,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
         SafeERC20.forceApprove(IERC20Metadata(order.collateral), address(creditManager), order.collateralAmount);
 
-        MultiCall[] memory calls;
-        if (order.collateral != order.tokenIn && order.collateral != order.tokenOut) {
-            calls = _genCallsForNonTokenInOrOutCollateral(order, adapter, adapterCallData);
-        } else {
-            calls = _genCallsForTokenOutCollateralOrUnderlyingCollateral(order, adapter, adapterCallData);
-        }
+        MultiCall[] memory calls = _genCalls(order, adapter, adapterCallData);
         ICreditFacadeV3(creditFacadeAddress).botMulticall(order.creditAccount, calls);
 
         bytes32 orderHash = _getOrderHash(order);
