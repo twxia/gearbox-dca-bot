@@ -187,9 +187,11 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
     }
 
     function _calcTokenOutMinAmount(Order calldata order) internal view returns (uint256) {
-        uint8 tokenInDecimals = IERC20Metadata(order.tokenIn).decimals();
-        uint8 tokenOutDecimals = IERC20Metadata(order.tokenOut).decimals();
-        uint256 price = _price(order.tokenIn, order.tokenOut);
+        address tokenIn = order.tokenIn;
+        address tokenOut = order.tokenOut;
+        uint8 tokenInDecimals = IERC20Metadata(tokenIn).decimals();
+        uint8 tokenOutDecimals = IERC20Metadata(tokenOut).decimals();
+        uint256 price = _price(tokenIn, tokenOut);
         uint256 tokenInAmountWithSlippage = (order.amountIn * (PERCENTAGE_FACTOR - order.slippage)) / PERCENTAGE_FACTOR;
         uint256 tokenOutMinAmountWithTokenInDecimals = (tokenInAmountWithSlippage * price) / 1e8;
         uint256 tokenOutMinAmount =
@@ -219,23 +221,28 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         BalanceDelta[] memory deltas;
         uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
 
-        if (order.collateral != order.tokenIn) {
-            if (order.collateral == order.tokenOut) {
+        address tokenIn = order.tokenIn;
+        address tokenOut = order.tokenOut;
+        address collateral = order.collateral;
+        uint256 collateralAmount = order.collateralAmount;
+
+        if (collateral != tokenIn) {
+            if (collateral == tokenOut) {
                 deltas = new BalanceDelta[](2);
-                tokenOutMinAmount = tokenOutMinAmount + order.collateralAmount;
-                deltas[0] = BalanceDelta({token: order.tokenIn, amount: 0});
-                deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
+                tokenOutMinAmount = tokenOutMinAmount + collateralAmount;
+                deltas[0] = BalanceDelta({token: tokenIn, amount: 0});
+                deltas[1] = BalanceDelta({token: tokenOut, amount: tokenOutMinAmount.toInt256()});
                 return deltas;
             }
             deltas = new BalanceDelta[](3);
-            deltas[0] = BalanceDelta({token: order.tokenIn, amount: 0});
-            deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
-            deltas[2] = BalanceDelta({token: order.collateral, amount: order.collateralAmount.toInt256()});
+            deltas[0] = BalanceDelta({token: tokenIn, amount: 0});
+            deltas[1] = BalanceDelta({token: tokenOut, amount: tokenOutMinAmount.toInt256()});
+            deltas[2] = BalanceDelta({token: collateral, amount: collateralAmount.toInt256()});
             return deltas;
         }
         deltas = new BalanceDelta[](2);
-        deltas[0] = BalanceDelta({token: order.tokenIn, amount: order.collateralAmount.toInt256()});
-        deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
+        deltas[0] = BalanceDelta({token: tokenIn, amount: collateralAmount.toInt256()});
+        deltas[1] = BalanceDelta({token: tokenOut, amount: tokenOutMinAmount.toInt256()});
         return deltas;
     }
 
@@ -248,12 +255,16 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         view
         returns (MultiCall[] memory)
     {
-        ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
-        address creditFacadeAddress = creditManager.creditFacade();
+        address creditFacadeAddress = ICreditManagerV3(order.creditManager).creditFacade();
+        address collateral = order.collateral;
+        address tokenIn = order.tokenIn;
+        address tokenOut = order.tokenOut;
+        uint256 collateralAmount = order.collateralAmount;
+        uint256 amountIn = order.amountIn;
+
+        bool isNonTokenInOrOutCollateral = collateral != tokenIn && collateral != tokenOut;
 
         MultiCall[] memory calls;
-
-        bool isNonTokenInOrOutCollateral = order.collateral != order.tokenIn && order.collateral != order.tokenOut;
 
         if (isNonTokenInOrOutCollateral) {
             calls = new MultiCall[](7);
@@ -268,51 +279,51 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
         calls[1] = MultiCall({
             target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (collateral, collateralAmount))
         });
 
         calls[2] = MultiCall({
             target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (amountIn))
         });
 
         calls[3] = MultiCall({target: adapter, callData: adapterCallData});
 
         if (isNonTokenInOrOutCollateral) {
             uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
-            int96 quotaForCollateral = _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
-            int96 quotaForTokenOut = _calcQuotaForQuotedToken(order.tokenOut, order.tokenIn, tokenOutMinAmount);
+            int96 quotaForCollateral = _calcQuotaForQuotedToken(collateral, tokenIn, collateralAmount);
+            int96 quotaForTokenOut = _calcQuotaForQuotedToken(tokenOut, tokenIn, tokenOutMinAmount);
 
-            /// @dev can be enhanced to this formula (muliplied by LT):
+            /// can be enhanced to this formula (muliplied by LT):
             /// https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
             calls[4] = MultiCall({
                 target: creditFacadeAddress,
                 callData: abi.encodeCall(
-                    ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quotaForTokenOut, uint96(quotaForTokenOut))
+                    ICreditFacadeV3Multicall.updateQuota, (tokenOut, quotaForTokenOut, uint96(quotaForTokenOut))
                     )
             });
 
             calls[5] = MultiCall({
                 target: creditFacadeAddress,
                 callData: abi.encodeCall(
-                    ICreditFacadeV3Multicall.updateQuota, (order.collateral, quotaForCollateral, uint96(quotaForCollateral))
+                    ICreditFacadeV3Multicall.updateQuota, (collateral, quotaForCollateral, uint96(quotaForCollateral))
                     )
             });
         } else {
-            int96 quota = int96(uint96(order.amountIn));
-            if (order.collateral != order.tokenIn && order.collateral == order.tokenOut) {
-                quota += _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
+            int96 quota = int96(uint96(amountIn));
+            if (collateral != tokenIn && collateral == tokenOut) {
+                quota += _calcQuotaForQuotedToken(collateral, tokenIn, collateralAmount);
             }
 
-            /// @dev can be enhanced to this formula (muliplied by LT):
+            /// this can be enhanced to this formula (muliplied by LT):
             /// https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
             calls[4] = MultiCall({
                 target: creditFacadeAddress,
-                callData: abi.encodeCall(ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quota, uint96(quota)))
+                callData: abi.encodeCall(ICreditFacadeV3Multicall.updateQuota, (tokenOut, quota, uint96(quota)))
             });
         }
 
-        /// @dev isNonTokenInOrOutCollateral has an additional call data
+        /// isNonTokenInOrOutCollateral has an additional call data
         calls[isNonTokenInOrOutCollateral ? 6 : 5] = MultiCall({
             target: creditFacadeAddress,
             callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())
@@ -325,9 +336,12 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
         address creditFacadeAddress = creditManager.creditFacade();
 
-        SafeERC20.safeTransferFrom(IERC20Metadata(order.collateral), order.owner, address(this), order.collateralAmount);
+        address collateral = order.collateral;
+        uint256 collateralAmount = order.collateralAmount;
 
-        SafeERC20.forceApprove(IERC20Metadata(order.collateral), address(creditManager), order.collateralAmount);
+        SafeERC20.safeTransferFrom(IERC20Metadata(collateral), order.owner, address(this), collateralAmount);
+
+        SafeERC20.forceApprove(IERC20Metadata(collateral), address(creditManager), collateralAmount);
 
         MultiCall[] memory calls = _genCalls(order, adapter, adapterCallData);
         ICreditFacadeV3(creditFacadeAddress).botMulticall(order.creditAccount, calls);
