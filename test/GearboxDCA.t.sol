@@ -211,10 +211,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
+        uint16 slippage = 5; // 0.5%
+        uint32 period = 100;
         uint256 collateralAmount = 3 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -296,10 +296,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_with_usdt_collateral() public {
         _prepareUsdtCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
         uint256 collateralAmount = 10000e6;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -373,10 +373,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_with_wbtc_collateral() public {
         _prepareWbtcCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
         uint256 collateralAmount = 0.2e8; // 0.2 WBTC
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -450,10 +450,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_revert_InvalidPartitionException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = dcaBot.MAX_PARTITION() + 1;
+        uint32 parts = dcaBot.MAX_PARTITION() + 1;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -503,10 +503,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_revert_InvalidCreditManagerException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -547,10 +547,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_revert_InvalidSignerException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -591,10 +591,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_revert_OrderAlreadyExecutedException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -642,10 +642,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_revert_OrderAlreadyCompletedException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -706,10 +706,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_slippage_protection() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 1; // 0.1%
         uint256 amountIn = 40 ether;
-        uint256 slippage = 1; // 0.1%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -751,10 +751,10 @@ contract GearboxDCATest is Test {
     function test_executeOrder_revert_OrderAlreadyCancelledException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -808,10 +808,10 @@ contract GearboxDCATest is Test {
     function test_cancelOrder() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -842,10 +842,10 @@ contract GearboxDCATest is Test {
     function test_cancelOrder_revert_OrderAlreadyCancelledException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -873,10 +873,10 @@ contract GearboxDCATest is Test {
     function test_cancelOrder_revert_InvalidOrderOwnerException() public {
         _prepareWethCollateralForDCABot();
 
-        uint256 parts = 2;
+        uint32 parts = 2;
+        uint32 period = 100;
+        uint16 slippage = 5; // 0.5%
         uint256 amountIn = 10 ether;
-        uint256 slippage = 5; // 0.5%
-        uint256 period = 100;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
             owner: bob,
@@ -912,7 +912,7 @@ contract GearboxDCATest is Test {
     function _expectOrderExecutedEvent(
         address creditAccount,
         bytes32 orderHash,
-        uint256 parts,
+        uint32 parts,
         uint256 executedTimes
     )
         internal

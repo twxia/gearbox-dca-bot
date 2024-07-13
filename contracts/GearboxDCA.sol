@@ -34,7 +34,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
     using LibFormatter for uint256;
     using SafeCast for uint256;
 
-    uint256 public constant MAX_PARTITION = 1_000_000;
+    uint32 public constant MAX_PARTITION = 1_000_000;
 
     string public constant ORDER_TYPE =
         "Order(address creditAccount,address collateral,address tokenIn,address tokenOut,uint256 salt,uint256 amountIn,uint256 parts,uint256 period,uint256 slippage)";
