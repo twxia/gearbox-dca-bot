@@ -23,14 +23,14 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {MultiCall} from "@gearbox-protocol/core-v2/contracts/libraries/MultiCall.sol";
 
 import {IGearboxDCA} from "contracts/interfaces/IGearboxDCA.sol";
+
+import {IGearboxDCAEvent} from "contracts/interfaces/IGearboxDCAEvent.sol";
 import {IGearboxDCAStruct} from "contracts/interfaces/IGearboxDCAStruct.sol";
 import {LibFormatter} from "contracts/libs/LibFormatter.sol";
 
 import "contracts/interfaces/IGearboxDCAException.sol";
 
-import "forge-std/console.sol";
-
-contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
+contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent {
     using LibFormatter for uint256;
     using SafeCast for uint256;
 
@@ -124,6 +124,8 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         }
 
         status.cancelledTime = uint32(block.timestamp);
+
+        emit OrderCancelled(order.creditAccount, orderHash);
     }
 
     //
@@ -369,5 +371,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
 
         status.executedTimes += 1;
         status.executedTime = uint32(block.timestamp);
+
+        emit OrderExectued(order.creditAccount, orderHash, msg.sender, order.parts, status.executedTimes);
     }
 }

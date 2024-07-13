@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 
 import "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
 
+import {IGearboxDCAEvent} from "../contracts/interfaces/IGearboxDCAEvent.sol";
 import "../contracts/interfaces/IGearboxDCAException.sol";
 import {IGearboxDCAStruct} from "../contracts/interfaces/IGearboxDCAStruct.sol";
 import {TestGearboxDCA} from "../contracts/tests/TestGearboxDCA.sol";
@@ -244,6 +245,8 @@ contract GearboxDCATest is Test {
         bytes32 orderHash = dcaBot.getOrderHash(order);
         bytes memory sig = _genSignature(bobPrivateKey, orderHash);
 
+        _expectOrderExecutedEvent(bobCreditAccount, orderHash, parts, 1);
+
         dcaBot.executeOrder(
             order,
             sig,
@@ -267,6 +270,8 @@ contract GearboxDCATest is Test {
         vm.warp(block.timestamp + period);
         vm.roll(block.number + 1);
 
+        _expectOrderExecutedEvent(bobCreditAccount, orderHash, parts, 2);
+
         dcaBot.executeOrder(
             order,
             sig,
@@ -283,9 +288,9 @@ contract GearboxDCATest is Test {
         assertEq(status.executedTime, block.timestamp);
         assertEq(status.cancelledTime, 0);
 
-        CollateralDebtData memory data =
-            creditManager.calcDebtAndCollateral(order.creditAccount, CollateralCalcTask.GENERIC_PARAMS);
-        console.log("Collateral: %s", data.debt);
+        // CollateralDebtData memory data =
+        //     creditManager.calcDebtAndCollateral(order.creditAccount, CollateralCalcTask.GENERIC_PARAMS);
+        // console.log("Collateral: %s", data.debt);
     }
 
     function test_executeOrder_with_usdt_collateral() public {
@@ -902,5 +907,17 @@ contract GearboxDCATest is Test {
     function _genSignature(uint256 privateKey, bytes32 orderHash) internal pure returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, orderHash);
         return abi.encodePacked(r, s, v);
+    }
+
+    function _expectOrderExecutedEvent(
+        address creditAccount,
+        bytes32 orderHash,
+        uint256 parts,
+        uint256 executedTimes
+    )
+        internal
+    {
+        vm.expectEmit(true, true, true, true, address(dcaBot));
+        emit IGearboxDCAEvent.OrderExectued(creditAccount, orderHash, address(this), parts, executedTimes);
     }
 }
