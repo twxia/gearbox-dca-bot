@@ -5,7 +5,11 @@ import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
-import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+import {
+    CollateralCalcTask,
+    CollateralDebtData,
+    ICreditManagerV3
+} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {BalanceDelta} from "@gearbox-protocol/core-v3/contracts/libraries/BalancesLogic.sol";
 
@@ -23,6 +27,8 @@ import {IGearboxDCAStruct} from "contracts/interfaces/IGearboxDCAStruct.sol";
 import {LibFormatter} from "contracts/libs/LibFormatter.sol";
 
 import "contracts/interfaces/IGearboxDCAException.sol";
+
+import "forge-std/console.sol";
 
 contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
     using LibFormatter for uint256;
@@ -174,72 +180,188 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct {
         }
     }
 
+    function _price(address tokenA, address tokenB) internal view returns (uint256) {
+        return _priceOracle.getPrice(tokenA) * 1e8 / _priceOracle.getPrice(tokenB);
+    }
+
     function _calcTokenOutMinAmount(Order calldata order) internal view returns (uint256) {
         uint8 tokenInDecimals = IERC20Metadata(order.tokenIn).decimals();
         uint8 tokenOutDecimals = IERC20Metadata(order.tokenOut).decimals();
-        uint256 tokenInPrice = _priceOracle.getPrice(order.tokenIn);
-        uint256 tokenOutPrice = _priceOracle.getPrice(order.tokenOut);
-        uint256 price = (tokenInPrice * 1e8) / tokenOutPrice;
+        uint256 price = _price(order.tokenIn, order.tokenOut);
         uint256 tokenInAmountWithSlippage = (order.amountIn * (PERCENTAGE_FACTOR - order.slippage)) / PERCENTAGE_FACTOR;
         uint256 tokenOutMinAmountWithTokenInDecimals = (tokenInAmountWithSlippage * price) / 1e8;
         uint256 tokenOutMinAmount =
             tokenOutMinAmountWithTokenInDecimals.formatDecimals(tokenInDecimals, tokenOutDecimals);
+
         return tokenOutMinAmount;
     }
 
-    function _execute(Order calldata order, address adapter, bytes calldata adapterCallData) internal {
-        address creditManager = order.creditManager;
-        address creditFacade = ICreditManagerV3(creditManager).creditFacade();
+    function _calcQuotaForQuotedToken(
+        address quotedToken,
+        address underlyingToken,
+        uint256 quotedTokenAmount
+    )
+        internal
+        view
+        returns (int96)
+    {
+        uint8 quotedTokenDecimals = IERC20Metadata(quotedToken).decimals();
+        uint8 underlyingTokenDecimals = IERC20Metadata(underlyingToken).decimals();
+        uint256 price = _price(quotedToken, underlyingToken).formatDecimals(8, underlyingTokenDecimals);
+        uint256 quota = (price * quotedTokenAmount) / (10 ** quotedTokenDecimals);
 
-        SafeERC20.safeTransferFrom(IERC20Metadata(order.collateral), order.owner, address(this), order.collateralAmount);
+        return int96(uint96(quota));
+    }
 
-        SafeERC20.forceApprove(IERC20Metadata(order.collateral), creditManager, order.collateralAmount);
-
-        MultiCall[] memory calls = new MultiCall[](6);
-
-        BalanceDelta[] memory deltas = new BalanceDelta[](2);
-
-        deltas[0] = BalanceDelta({token: order.tokenIn, amount: order.collateralAmount.toInt256()});
-
+    function _genBalanceDelta(Order calldata order) internal view returns (BalanceDelta[] memory) {
+        BalanceDelta[] memory deltas;
         uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
 
+        if (order.collateral != order.tokenIn) {
+            if (order.collateral == order.tokenOut) {
+                deltas = new BalanceDelta[](2);
+                tokenOutMinAmount = tokenOutMinAmount + order.collateralAmount;
+                deltas[0] = BalanceDelta({token: order.tokenIn, amount: 0});
+                deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
+                return deltas;
+            }
+            deltas = new BalanceDelta[](3);
+            deltas[0] = BalanceDelta({token: order.tokenIn, amount: 0});
+            deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
+            deltas[2] = BalanceDelta({token: order.collateral, amount: order.collateralAmount.toInt256()});
+            return deltas;
+        }
+        deltas = new BalanceDelta[](2);
+        deltas[0] = BalanceDelta({token: order.tokenIn, amount: order.collateralAmount.toInt256()});
         deltas[1] = BalanceDelta({token: order.tokenOut, amount: tokenOutMinAmount.toInt256()});
+        return deltas;
+    }
+
+    function _genCallsForNonTokenInOrOutCollateral(
+        Order calldata order,
+        address adapter,
+        bytes calldata adapterCallData
+    )
+        internal
+        view
+        returns (MultiCall[] memory)
+    {
+        ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
+        address creditFacadeAddress = creditManager.creditFacade();
+
+        MultiCall[] memory calls = new MultiCall[](7);
 
         calls[0] = MultiCall({
-            target: creditFacade,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (deltas))
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (_genBalanceDelta(order)))
         });
 
         calls[1] = MultiCall({
-            target: creditFacade,
+            target: creditFacadeAddress,
             callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
         });
 
         calls[2] = MultiCall({
-            target: creditFacade,
+            target: creditFacadeAddress,
             callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
         });
+
+        uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
+        int96 quotaForCollateral = _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
+        int96 quotaForTokenOut = _calcQuotaForQuotedToken(order.tokenOut, order.tokenIn, tokenOutMinAmount);
 
         // TODO: enhance quota to this formula:
         // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
         calls[3] = MultiCall({
-            target: creditFacade,
+            target: creditFacadeAddress,
             callData: abi.encodeCall(
-                ICreditFacadeV3Multicall.updateQuota,
-                (
-                    order.tokenOut,
-                    int96(uint96(order.amountIn)),
-                    uint96(order.amountIn) // TODO: should be total usdt amount in eth
+                ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quotaForTokenOut, uint96(quotaForTokenOut))
                 )
+        });
+
+        calls[4] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(
+                ICreditFacadeV3Multicall.updateQuota, (order.collateral, quotaForCollateral, uint96(quotaForCollateral))
                 )
+        });
+
+        calls[5] = MultiCall({target: adapter, callData: adapterCallData});
+
+        calls[6] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())
+        });
+
+        return calls;
+    }
+
+    function _genCallsForTokenOutCollateralOrUnderlyingCollateral(
+        Order calldata order,
+        address adapter,
+        bytes calldata adapterCallData
+    )
+        internal
+        view
+        returns (MultiCall[] memory)
+    {
+        ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
+        address creditFacadeAddress = creditManager.creditFacade();
+
+        MultiCall[] memory calls = new MultiCall[](6);
+
+        calls[0] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.storeExpectedBalances, (_genBalanceDelta(order)))
+        });
+
+        calls[1] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.addCollateral, (order.collateral, order.collateralAmount))
+        });
+
+        calls[2] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (order.amountIn))
+        });
+
+        int96 quota = int96(uint96(order.amountIn));
+        if (order.collateral != order.tokenIn && order.collateral == order.tokenOut) {
+            quota += _calcQuotaForQuotedToken(order.collateral, order.tokenIn, order.collateralAmount);
+        }
+
+        // TODO: enhance quota to this formula:
+        // https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
+        calls[3] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.updateQuota, (order.tokenOut, quota, uint96(quota)))
         });
 
         calls[4] = MultiCall({target: adapter, callData: adapterCallData});
 
-        calls[5] =
-            MultiCall({target: creditFacade, callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())});
+        calls[5] = MultiCall({
+            target: creditFacadeAddress,
+            callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())
+        });
 
-        ICreditFacadeV3(creditFacade).botMulticall(order.creditAccount, calls);
+        return calls;
+    }
+
+    function _execute(Order calldata order, address adapter, bytes calldata adapterCallData) internal {
+        ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
+        address creditFacadeAddress = creditManager.creditFacade();
+
+        SafeERC20.safeTransferFrom(IERC20Metadata(order.collateral), order.owner, address(this), order.collateralAmount);
+
+        SafeERC20.forceApprove(IERC20Metadata(order.collateral), address(creditManager), order.collateralAmount);
+
+        MultiCall[] memory calls;
+        if (order.collateral != order.tokenIn && order.collateral != order.tokenOut) {
+            calls = _genCallsForNonTokenInOrOutCollateral(order, adapter, adapterCallData);
+        } else {
+            calls = _genCallsForTokenOutCollateralOrUnderlyingCollateral(order, adapter, adapterCallData);
+        }
+        ICreditFacadeV3(creditFacadeAddress).botMulticall(order.creditAccount, calls);
 
         bytes32 orderHash = _getOrderHash(order);
 

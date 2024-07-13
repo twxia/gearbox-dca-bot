@@ -1,8 +1,8 @@
 ## Gearbox DCA Bot Example
 
-This is a Solidity example of a DCA (Dollar-Cost Averaging) Bot using the Gearbox protocol.
+This is a Solidity example of a DCA (Dollar-Cost Averaging) Bot service using the Gearbox protocol. You can use your WBTC as collateral and borrow USDT to DCA buying in the WETH/USDT market.
 
-It does not include backend and frontend services. However, you can easily build a server with two endpoints: one to store signatures in a database, and another to provide available signatures to keeper bots. For frontend, you need to calculate the health risk related stuff and form the `Order` structure. (Please check `_prepareCreditAccountAndAuthorizeGearboxDCABot()` in the `GearboxDCA.t.sol` or the below flow chart to know more about it.)
+It does not include backend and frontend services. However, you can easily build a server with two endpoints: one to store signatures in a database, and another to provide available signatures to keeper bots. For frontend, you need to calculate the health risk related stuff and form the `Order` structure. (Please check `_prepareCreditAccountAndSetBotPermissions()`, and `_prepareXXXCollateralForDCABot` in the `GearboxDCA.t.sol` or the below flow chart to know more about it.)
 
 ## Flow Chart
 
