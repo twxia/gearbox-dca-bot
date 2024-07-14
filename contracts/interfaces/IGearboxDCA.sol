@@ -15,4 +15,6 @@ interface IGearboxDCA {
     function cancelOrder(IGearboxDCAStruct.Order calldata order) external;
 
     function getOrderHash(IGearboxDCAStruct.Order calldata order) external view returns (bytes32);
+
+    function getOrderStatus(bytes32 orderHash) external view returns (IGearboxDCAStruct.OrderStatus memory);
 }

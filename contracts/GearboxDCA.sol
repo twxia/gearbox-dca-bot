@@ -135,7 +135,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
     /// @notice Get the order status
     /// @param orderHash The order hash to get the status
-    function getOrderStatus(bytes32 orderHash) external view returns (OrderStatus memory) {
+    function getOrderStatus(bytes32 orderHash) external view override returns (OrderStatus memory) {
         return _orderStatuses[orderHash];
     }
 
