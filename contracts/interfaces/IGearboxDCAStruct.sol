@@ -6,13 +6,13 @@ interface IGearboxDCAStruct {
     /// @param creditManager The address of the credit manager
     /// @param creditAccount The address of the credit account
     /// @param collateral The address of the collateral token
-    /// @param tokenIn The address of the token to swap from
+    /// @param tokenIn The address of the token to swap from (shuold be the underlying token of the credit account)
     /// @param tokenOut The address of the token to swap to
     /// @param parts The number of parts to split the swap
     /// @param period The period in seconds between each swap
     /// @param slippage The slippage tolerance in percentage, (1e4 = 100%)
     /// @param salt The salt of the order for preventing same hash from same order parameters
-    /// @param collateralAmount The amount of collateral to deposit
+    /// @param collateralAmount The amount of collateral to deposit to the credit account
     /// @param amountIn The amount of tokenIn to swap
     struct Order {
         address owner;

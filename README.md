@@ -8,6 +8,19 @@ It does not include backend and frontend services. However, you can easily build
 
 ![sequence_diagram](./diagram/sequence.png)
 
+### User End
+
+1.  Approve `creditManager` to spend `N` amount of collateral (EIP-2612-compatible token can skip this step)
+    - `N > order.collateralAmount * order.parts` (order is the struct in 4.) Otherwise, the order will not be be executed.
+2.  Send `creditFacade.openCreditAccount(user, [addCollateral(WETH,10 ether)], 0)`
+3.  Send `creditFacade.setBotPermissions(dcaBot, EXTERNAL_CALLS_PERMISSION)`
+4.  Submit a DCA order to server
+
+### Keeper End
+
+1. By static calling `executeOrder()` or `getOrderStatus()` to check an order executability
+2. Send `executeOrder()` to execute an order.
+
 ## Design Note
 
 ### How should we handle the `openCreditAccount`?
