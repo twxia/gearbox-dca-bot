@@ -67,7 +67,7 @@ $ forge build
 ### Test
 
 ```shell
-$ forge test
+$ forge test --evm-version cancun
 ```
 
 ### Format

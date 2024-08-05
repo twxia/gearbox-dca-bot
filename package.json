@@ -13,6 +13,7 @@
     "@gearbox-protocol/core-v2": "^1.19.0-base.10",
     "@gearbox-protocol/core-v3": "^1.49.7",
     "@gearbox-protocol/integrations-v3": "^1.41.0",
+    "@gearbox-protocol/liquidator-v2-contracts": "^2.0.0",
     "@gearbox-protocol/sdk-gov": "^2.9.0",
     "@openzeppelin/contracts": "^5.0.2"
   }

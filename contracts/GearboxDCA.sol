@@ -3,11 +3,14 @@ pragma solidity ^0.8.13;
 
 import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces/IContractsRegister.sol";
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/Constants.sol";
+import {MultiCallOps} from "@gearbox-protocol/core-v2/contracts/libraries/MultiCall.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {BalanceDelta} from "@gearbox-protocol/core-v3/contracts/libraries/BalancesLogic.sol";
+import {IRouterV3, RouterResult} from "@gearbox-protocol/liquidator-v2-contracts/contracts/interfaces/IRouterV3.sol";
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -26,9 +29,12 @@ import {LibFormatter} from "contracts/libs/LibFormatter.sol";
 
 import "contracts/interfaces/IGearboxDCAException.sol";
 
+import "forge-std/console.sol";
+
 contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent {
     using LibFormatter for uint256;
     using SafeCast for uint256;
+    using MultiCallOps for MultiCall[];
 
     uint32 public constant MAX_PARTITION = 1_000_000;
 
@@ -40,18 +46,26 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
     IContractsRegister private _contractsRegister;
 
+    IRouterV3 private _router;
+
     mapping(bytes32 => OrderStatus) internal _orderStatuses;
+
+    address[] private _connectors;
 
     constructor(
         string memory name,
         string memory version,
         address priceOracle,
-        address contractsRegister
+        address contractsRegister,
+        address router,
+        address[] memory connectors
     )
         EIP712(name, version)
     {
         _priceOracle = IPriceOracleV3(priceOracle);
         _contractsRegister = IContractsRegister(contractsRegister);
+        _router = IRouterV3(router);
+        _connectors = connectors;
     }
 
     //
@@ -90,13 +104,9 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
     /// @notice Execute the order
     /// @param order The order to execute
     /// @param signature The signature of the order
-    /// @param adapter The address of the adapter to use
-    /// @param adapterCallData The call data of the adapter
     function executeOrder(
         Order calldata order,
-        bytes calldata signature,
-        address adapter,
-        bytes calldata adapterCallData
+        bytes calldata signature
     )
         external
         override
@@ -106,7 +116,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
     {
         _verifySigner(order, signature);
 
-        _execute(order, adapter, adapterCallData);
+        _execute(order);
     }
 
     /// @notice Cancel the order
@@ -135,7 +145,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
     /// @notice Get the order status
     /// @param orderHash The order hash to get the status
-    function getOrderStatus(bytes32 orderHash) external view returns (OrderStatus memory) {
+    function getOrderStatus(bytes32 orderHash) external view override returns (OrderStatus memory) {
         return _orderStatuses[orderHash];
     }
 
@@ -242,15 +252,7 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         return deltas;
     }
 
-    function _genCalls(
-        Order calldata order,
-        address adapter,
-        bytes calldata adapterCallData
-    )
-        internal
-        view
-        returns (MultiCall[] memory)
-    {
+    function _genCollateralCalls(Order calldata order) internal view returns (MultiCall[] memory) {
         address creditFacadeAddress = ICreditManagerV3(order.creditManager).creditFacade();
         address collateral = order.collateral;
         address tokenIn = order.tokenIn;
@@ -263,9 +265,9 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
         MultiCall[] memory calls;
 
         if (isNonTokenInOrOutCollateral) {
-            calls = new MultiCall[](7);
+            calls = new MultiCall[](5);
         } else {
-            calls = new MultiCall[](6);
+            calls = new MultiCall[](4);
         }
 
         calls[0] = MultiCall({
@@ -283,8 +285,6 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
             callData: abi.encodeCall(ICreditFacadeV3Multicall.increaseDebt, (amountIn))
         });
 
-        calls[3] = MultiCall({target: adapter, callData: adapterCallData});
-
         if (isNonTokenInOrOutCollateral) {
             uint256 tokenOutMinAmount = _calcTokenOutMinAmount(order);
             int96 quotaForCollateral = _calcQuotaForQuotedToken(collateral, tokenIn, collateralAmount);
@@ -292,14 +292,14 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
             /// can be enhanced to this formula (muliplied by LT):
             /// https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
-            calls[4] = MultiCall({
+            calls[3] = MultiCall({
                 target: creditFacadeAddress,
                 callData: abi.encodeCall(
                     ICreditFacadeV3Multicall.updateQuota, (tokenOut, quotaForTokenOut, uint96(quotaForTokenOut))
                     )
             });
 
-            calls[5] = MultiCall({
+            calls[4] = MultiCall({
                 target: creditFacadeAddress,
                 callData: abi.encodeCall(
                     ICreditFacadeV3Multicall.updateQuota, (collateral, quotaForCollateral, uint96(quotaForCollateral))
@@ -313,22 +313,40 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
             /// this can be enhanced to this formula (muliplied by LT):
             /// https://github.com/Gearbox-protocol/sdk/blob/d7dda524d049a3c68e31e44a8eed3fecc288b52d/src/core/creditAccount.ts#L564
-            calls[4] = MultiCall({
+            calls[3] = MultiCall({
                 target: creditFacadeAddress,
                 callData: abi.encodeCall(ICreditFacadeV3Multicall.updateQuota, (tokenOut, quota, uint96(quota)))
             });
         }
 
-        /// isNonTokenInOrOutCollateral has an additional call data
-        calls[isNonTokenInOrOutCollateral ? 6 : 5] = MultiCall({
-            target: creditFacadeAddress,
-            callData: abi.encodeCall(ICreditFacadeV3Multicall.compareBalances, ())
-        });
-
         return calls;
     }
 
-    function _execute(Order calldata order, address adapter, bytes calldata adapterCallData) internal {
+    function _genCalls(Order calldata order) internal returns (MultiCall[] memory) {
+        MultiCall[] memory collateralCalls = _genCollateralCalls(order);
+        MultiCall[] memory calls = _genRouterCalls(order);
+
+        // bypass router slippage check becuase it is not working well
+        MultiCall[] memory newCalls = new MultiCall[](calls.length - 1);
+        for (uint256 i = 1; i < calls.length; i++) {
+            newCalls[i - 1] = calls[i];
+        }
+
+        return collateralCalls.concat(newCalls);
+    }
+
+    function _genRouterCalls(Order calldata order) internal returns (MultiCall[] memory) {
+        ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
+        address creditFacadeAddress = creditManager.creditFacade();
+        RouterResult memory result;
+
+        result =
+            _router.findOneTokenPath(order.tokenIn, order.amountIn, order.tokenOut, order.creditAccount, _connectors, 0);
+
+        return result.calls;
+    }
+
+    function _execute(Order calldata order) internal {
         ICreditManagerV3 creditManager = ICreditManagerV3(order.creditManager);
         address creditFacadeAddress = creditManager.creditFacade();
 
@@ -339,7 +357,8 @@ contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent 
 
         SafeERC20.forceApprove(IERC20Metadata(collateral), address(creditManager), collateralAmount);
 
-        MultiCall[] memory calls = _genCalls(order, adapter, adapterCallData);
+        MultiCall[] memory calls = _genCalls(order);
+
         ICreditFacadeV3(creditFacadeAddress).botMulticall(order.creditAccount, calls);
 
         bytes32 orderHash = _getOrderHash(order);

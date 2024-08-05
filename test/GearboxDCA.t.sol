@@ -48,7 +48,8 @@ contract GearboxDCATest is Test {
     address internal constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant USDT_ADDRESS = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address internal constant WBTC_ADDRESS = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
-    address internal constant WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER = 0x33fcf8E7ad67E0eBcc8C79fE5d254AC56B7AfEA1;
+    address internal constant ROUTER = 0xA6FCd1fE716aD3801C71F2DE4E7A15f3a6994835;
+    address[] internal CONNECTORS = [WETH_ADDRESS, USDT_ADDRESS];
 
     uint256 internal constant BOB_INIT_WETH = 10 ether;
     uint256 internal constant BOB_INIT_USDT = 30_000e6;
@@ -71,7 +72,7 @@ contract GearboxDCATest is Test {
         creditManager = ICreditManagerV3(WETH_TIER_1_CREDIT_MANAGER);
         creditFacade = ICreditFacadeV3(creditManager.creditFacade());
         priceOracle = IPriceOracleV3(PRICE_ORACLE);
-        dcaBot = new TestGearboxDCA("GearboxDCA", "1.0.0", PRICE_ORACLE, CONTRACTS_REGISTER);
+        dcaBot = new TestGearboxDCA("GearboxDCA", "1.0.0", PRICE_ORACLE, CONTRACTS_REGISTER, ROUTER, CONNECTORS);
 
         (bob, bobPrivateKey) = makeAddrAndKey("Bob");
 
@@ -208,12 +209,12 @@ contract GearboxDCATest is Test {
         dcaBot.verifySigner(order, abi.encodePacked(r, s, v));
     }
 
-    function test_executeOrder() public {
+    function test_executeOrder_weth() public {
         _prepareWethCollateralForDCABot();
 
         uint32 parts = 2;
         uint256 amountIn = 10 ether;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint32 period = 100;
         uint256 collateralAmount = 3 ether;
 
@@ -231,28 +232,13 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes32 orderHash = dcaBot.getOrderHash(order);
         bytes memory sig = _genSignature(bobPrivateKey, orderHash);
 
         _expectOrderExecutedEvent(bobCreditAccount, orderHash, parts, 1);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         uint256 rate = _calcRate(WETH_ADDRESS, USDT_ADDRESS);
         uint256 expectedAmountOut = ((rate * order.amountIn) / 1e18).formatDecimals(8, 6);
@@ -272,12 +258,7 @@ contract GearboxDCATest is Test {
 
         _expectOrderExecutedEvent(bobCreditAccount, orderHash, parts, 2);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         status = dcaBot.getOrderStatus(orderHash);
 
@@ -298,7 +279,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
         uint256 collateralAmount = 10000e6;
 
@@ -316,26 +297,11 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes32 orderHash = dcaBot.getOrderHash(order);
         bytes memory sig = _genSignature(bobPrivateKey, orderHash);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         uint256 rate = _calcRate(WETH_ADDRESS, USDT_ADDRESS);
         uint256 expectedAmountOut = ((rate * order.amountIn) / 1e18).formatDecimals(8, 6);
@@ -352,12 +318,7 @@ contract GearboxDCATest is Test {
         vm.warp(block.timestamp + period);
         vm.roll(block.number + 1);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         status = dcaBot.getOrderStatus(orderHash);
 
@@ -375,8 +336,8 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
-        uint256 amountIn = 10 ether;
+        uint16 slippage = 50; // 0.5%
+        uint256 amountIn = 20 ether;
         uint256 collateralAmount = 0.2e8; // 0.2 WBTC
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -393,26 +354,11 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes32 orderHash = dcaBot.getOrderHash(order);
         bytes memory sig = _genSignature(bobPrivateKey, orderHash);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         uint256 rate = _calcRate(WETH_ADDRESS, USDT_ADDRESS);
         uint256 expectedAmountOut = ((rate * order.amountIn) / 1e18).formatDecimals(8, 6);
@@ -430,12 +376,7 @@ contract GearboxDCATest is Test {
         vm.warp(block.timestamp + period);
         vm.roll(block.number + 1);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         status = dcaBot.getOrderStatus(orderHash);
 
@@ -452,7 +393,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = dcaBot.MAX_PARTITION() + 1;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -469,35 +410,15 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes memory sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
 
         vm.expectRevert(InvalidPartitionException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         order.parts = dcaBot.MAX_PARTITION();
         sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_executeOrder_revert_InvalidCreditManagerException() public {
@@ -505,7 +426,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -522,26 +443,11 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes memory sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
 
         vm.expectRevert(InvalidCreditManagerException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_executeOrder_revert_InvalidSignerException() public {
@@ -549,7 +455,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -566,26 +472,11 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes memory sig = _genSignature(1, dcaBot.getOrderHash(order));
 
         vm.expectRevert(InvalidSingerException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_executeOrder_revert_OrderAlreadyExecutedException() public {
@@ -593,7 +484,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -610,33 +501,13 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes memory sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         vm.expectRevert(OrderAlreadyExecutedException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_executeOrder_revert_OrderAlreadyCompletedException() public {
@@ -644,7 +515,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -661,46 +532,21 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes memory sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         vm.warp(block.timestamp + period);
         vm.roll(block.number + 1);
 
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
 
         vm.warp(block.timestamp + period);
         vm.roll(block.number + 1);
 
         vm.expectRevert(OrderAlreadyCompletedException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_executeOrder_slippage_protection() public {
@@ -708,7 +554,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 1; // 0.1%
+        uint16 slippage = 1; // 0.01%
         uint256 amountIn = 40 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -725,27 +571,12 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes32 orderHash = dcaBot.getOrderHash(order);
         bytes memory sig = _genSignature(bobPrivateKey, orderHash);
 
         vm.expectRevert(BalanceLessThanExpectedException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_executeOrder_revert_OrderAlreadyCancelledException() public {
@@ -753,7 +584,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -770,16 +601,6 @@ contract GearboxDCATest is Test {
             period: period,
             slippage: slippage
         });
-        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            fee: 500,
-            amountIn: amountIn,
-            recipient: bobCreditAccount,
-            deadline: block.timestamp + 100,
-            amountOutMinimum: 0,
-            sqrtPriceLimitX96: 0
-        });
 
         bytes memory sig = _genSignature(bobPrivateKey, dcaBot.getOrderHash(order));
 
@@ -787,12 +608,7 @@ contract GearboxDCATest is Test {
         dcaBot.cancelOrder(order);
 
         vm.expectRevert(OrderAlreadyCancelledException.selector);
-        dcaBot.executeOrder(
-            order,
-            sig,
-            WETH_TIER_1_ADAPTER_UNISWAP_V3_ROUTER,
-            abi.encodeWithSelector(ISwapRouter.exactInputSingle.selector, swapParams)
-        );
+        dcaBot.executeOrder(order, sig);
     }
 
     function test_getOrderStatus_initial_values() public {
@@ -810,7 +626,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -844,7 +660,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -875,7 +691,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({

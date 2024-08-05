@@ -4,8 +4,15 @@ pragma solidity ^0.8.13;
 import "../GearboxDCA.sol";
 
 contract TestGearboxDCA is GearboxDCA {
-    constructor(string memory name, string memory version, address priceOracle, address contractsRegister)
-        GearboxDCA(name, version, priceOracle, contractsRegister)
+    constructor(
+        string memory name,
+        string memory version,
+        address priceOracle,
+        address contractsRegister,
+        address router,
+        address[] memory connectors
+    )
+        GearboxDCA(name, version, priceOracle, contractsRegister, router, connectors)
     {}
 
     function verifySigner(Order calldata order, bytes calldata signature) external view {
