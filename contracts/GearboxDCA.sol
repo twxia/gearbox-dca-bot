@@ -29,8 +29,6 @@ import {LibFormatter} from "contracts/libs/LibFormatter.sol";
 
 import "contracts/interfaces/IGearboxDCAException.sol";
 
-import "forge-std/console.sol";
-
 contract GearboxDCA is EIP712, IGearboxDCA, IGearboxDCAStruct, IGearboxDCAEvent {
     using LibFormatter for uint256;
     using SafeCast for uint256;
