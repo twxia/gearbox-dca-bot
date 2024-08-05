@@ -213,7 +213,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint256 amountIn = 10 ether;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint32 period = 100;
         uint256 collateralAmount = 3 ether;
 
@@ -298,7 +298,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
         uint256 collateralAmount = 10000e6;
 
@@ -375,7 +375,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
         uint256 collateralAmount = 0.2e8; // 0.2 WBTC
 
@@ -452,7 +452,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = dcaBot.MAX_PARTITION() + 1;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -505,7 +505,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -549,7 +549,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -593,7 +593,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -644,7 +644,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -708,7 +708,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 1; // 0.1%
+        uint16 slippage = 1; // 0.01%
         uint256 amountIn = 40 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -753,7 +753,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -810,7 +810,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -844,7 +844,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
@@ -875,7 +875,7 @@ contract GearboxDCATest is Test {
 
         uint32 parts = 2;
         uint32 period = 100;
-        uint16 slippage = 5; // 0.5%
+        uint16 slippage = 50; // 0.5%
         uint256 amountIn = 10 ether;
 
         IGearboxDCAStruct.Order memory order = IGearboxDCAStruct.Order({
